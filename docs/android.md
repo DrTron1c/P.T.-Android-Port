@@ -100,6 +100,15 @@ with a `source.txt`.
 newer key derivation, a fragmented file, a file past the doubly indirect block limit, archives found by content in a subfolder,
 and the refusals (other passcode, not a PKG, truncated, another game).
 
+## When the game closes by itself
+
+Android keeps the reason every earlier run of an app ended (`ApplicationExitInfo`, Android 11 and newer). If the last run was
+a crash, a kill for memory or a hang, the launcher shows `CrashReport.java`'s report instead of starting the game again: the
+device, how the run ended (reason, signal, memory then), the native crash's backtrace from the tombstone, the head and tail of
+`pt.log`, and the app's logcat. Copy and Share put it where it can be pasted into an issue. The report is also kept in the app's
+files as `last-crash-report.txt`. Without it, `pt.log` is at `files/pt-runtime/data/pt.log` (`adb shell run-as
+com.ptport.android cat files/pt-runtime/data/pt.log`; the APK is debuggable) and the log goes to logcat under the tag `PT`.
+
 ## Status
 
 - Written without an NDK in reach; the first builds were compiled by CI only. The touch code and the Android branches were

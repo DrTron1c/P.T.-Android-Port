@@ -3,11 +3,13 @@ package com.ptport.android;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -24,6 +26,7 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -77,6 +80,8 @@ public class ImportActivity extends Activity {
     private final List<Uri> pickedPkgs = new ArrayList<Uri>();
 
     private View content;
+    private View crashView;
+    private LinearLayout root;
     private LinearLayout banner;
     private TextView bannerText;
     private ProgressBar bannerBar;
@@ -156,8 +161,129 @@ public class ImportActivity extends Activity {
         ui.removeCallbacks(proceedNow);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         banner.setVisibility(View.GONE);
-        if (hasGame(this)) startGame();
-        else content.setVisibility(View.VISIBLE);
+        if (!hasGame(this)) {
+            content.setVisibility(View.VISIBLE);
+            return;
+        }
+        final CrashReport.Pending crashed = CrashReport.find(this);
+        if (crashed == null) {
+            startGame();
+            return;
+        }
+        // the game closed on its own last time: the player gets the report (CrashReport) instead of the same crash again
+        showBanner("The game closed unexpectedly last time. Collecting what Android and the game recorded...", -1, false);
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String text = CrashReport.build(ImportActivity.this, crashed);
+                ui.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        showCrash(crashed.time, text);
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private Button smallButton(String label, View.OnClickListener listener) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setAllCaps(false);
+        button.setOnClickListener(listener);
+        return button;
+    }
+
+    /** The crash report: the text to copy or share, and the ways on (start again, or import the game files again). */
+    private void showCrash(final long time, final String report) {
+        if (isFinishing()) return;
+        banner.setVisibility(View.GONE);
+        content.setVisibility(View.GONE);
+        int pad = (int) (12 * getResources().getDisplayMetrics().density);
+        LinearLayout column = new LinearLayout(this);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setPadding(pad, pad, pad, pad);
+
+        TextView title = new TextView(this);
+        title.setText("The game closed unexpectedly");
+        title.setTextSize(22);
+        title.setTextColor(Color.WHITE);
+        column.addView(title);
+
+        TextView hint = new TextView(this);
+        hint.setText("Copy this report and paste it into the chat with whoever is fixing it. It holds nothing personal: "
+                + "the device model, how the game ended and its log.");
+        hint.setTextSize(14);
+        hint.setTextColor(Color.LTGRAY);
+        hint.setPadding(0, pad / 2, 0, pad / 2);
+        column.addView(hint);
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        final Button copy = smallButton("Copy", null);
+        copy.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                try {
+                    ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                    clipboard.setPrimaryClip(ClipData.newPlainText("P.T. crash report", report));
+                    copy.setText("Copied");
+                    Toast.makeText(ImportActivity.this, "Copied. Paste it into the chat.", Toast.LENGTH_SHORT).show();
+                } catch (RuntimeException e) {
+                    Toast.makeText(ImportActivity.this, "Could not copy: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                }
+            }
+        });
+        row.addView(copy, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(smallButton("Share", new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Intent send = new Intent(Intent.ACTION_SEND);
+                send.setType("text/plain");
+                send.putExtra(Intent.EXTRA_SUBJECT, "P.T. PC Port crash report");
+                send.putExtra(Intent.EXTRA_TEXT, report);
+                try {
+                    startActivity(Intent.createChooser(send, "Share the report"));
+                } catch (ActivityNotFoundException e) {
+                    Toast.makeText(ImportActivity.this, "Nothing on this device can take it; use Copy.", Toast.LENGTH_LONG).show();
+                }
+            }
+        }), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        column.addView(row);
+
+        LinearLayout row2 = new LinearLayout(this);
+        row2.setOrientation(LinearLayout.HORIZONTAL);
+        row2.addView(smallButton("Start the game again", new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                CrashReport.markSeen(ImportActivity.this, time);
+                startGame();
+            }
+        }), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        row2.addView(smallButton("Import the game files again", new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                CrashReport.markSeen(ImportActivity.this, time);
+                if (crashView != null) crashView.setVisibility(View.GONE);
+                content.setVisibility(View.VISIBLE);
+                status.setText("Choose the dump folder, the two files or the fake PKG again; the old copy is replaced.");
+            }
+        }), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        column.addView(row2);
+
+        TextView text = new TextView(this);
+        text.setText(report);
+        text.setTextSize(11);
+        text.setTypeface(Typeface.MONOSPACE);
+        text.setTextColor(Color.rgb(200, 220, 200));
+        text.setTextIsSelectable(true);
+        text.setPadding(0, pad, 0, 0);
+        column.addView(text);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(column);
+        crashView = scroll;
+        root.addView(scroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
     }
 
     private void startGame() {
@@ -312,7 +438,7 @@ public class ImportActivity extends Activity {
         scroll.addView(column);
         content = scroll;
 
-        LinearLayout root = new LinearLayout(this);
+        root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.BLACK);
         root.addView(buildBanner(pad), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
