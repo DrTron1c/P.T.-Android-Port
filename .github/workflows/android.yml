@@ -1,0 +1,90 @@
+# The Android app (docs/android.md): arm64, built with the NDK on GitHub's Linux runner. A push to the android branch or a manual run
+# (Actions > Android > Run workflow) builds it; the APK is a workflow artifact and a draft release ("Android build <n>", under Releases,
+# visible to the repository owner). The last step always pushes a short log of the run to the ci-logs branch.
+name: Android
+
+on:
+  push:
+    branches: [android]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+          echo "NDK: ${ANDROID_NDK_LATEST_HOME:-none}"
+          cmake --version | head -1
+
+      - name: Native build
+        run: |
+          set -o pipefail
+          export ANDROID_NDK_HOME="${ANDROID_NDK_LATEST_HOME}"
+          tools/android/build.sh native 2>&1 | tee build-native.log
+
+      - name: APK
+        run: |
+          set -o pipefail
+          tools/android/build.sh apk 2>&1 | tee build-apk.log
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: P.T.PC.Port-Android-arm64
+          path: dist/P.T.PC.Port-Android-arm64.apk
+
+      - name: Draft release with the APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # drafts do not fire the macOS workflow's "release published" trigger; keep only the newest Android draft
+          for id in $(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[] | select(.draft) | select(.tag_name | startswith("android-build")) | .id'); do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id" || true
+          done
+          gh release create "android-build-$GITHUB_RUN_NUMBER" dist/P.T.PC.Port-Android-arm64.apk \
+            --draft --prerelease --target "$GITHUB_SHA" \
+            --title "Android build $GITHUB_RUN_NUMBER (${GITHUB_SHA::7})" \
+            --notes "arm64 APK from commit $GITHUB_SHA. Needs your own P.T. dump (CUSA01127); see docs/android.md." \
+            --repo "$GITHUB_REPOSITORY" || echo "release step failed (the APK is still a workflow artifact)"
+
+      - name: Push a short log to ci-logs
+        if: always()
+        run: |
+          mkdir -p /tmp/ci
+          {
+            echo "run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "commit: $GITHUB_SHA"
+            echo "job status: ${{ job.status }}"
+            ls -l dist 2>/dev/null || echo "no dist folder"
+          } > /tmp/ci/status.txt
+          for name in native apk; do
+            touch "build-$name.log"
+            tail -n 300 "build-$name.log" > "/tmp/ci/$name-tail.log"
+            grep -nE "error:|CMake Error|FAILED|fatal error|undefined (reference|symbol)|Execution failed|What went wrong|ninja: build stopped" "build-$name.log" | head -120 > "/tmp/ci/$name-errors.txt" || true
+          done
+          git config user.name "android-ci"
+          git config user.email "android-ci@users.noreply.github.com"
+          git checkout --orphan ci-logs
+          git rm -rf --quiet . || true
+          git clean -ffdxq
+          cp /tmp/ci/* .
+          git add -A
+          git commit --quiet -m "Android CI log for $GITHUB_SHA"
+          git push --force origin ci-logs

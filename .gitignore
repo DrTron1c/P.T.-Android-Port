@@ -53,3 +53,12 @@ scratch/*
 # .NET build output of the installer helper and its tests (tools/ci/release.py publishes the helper itself)
 installer/*/bin/
 installer/*/obj/
+
+# Android app (docs/android.md): staged by tools/android/stage.py, built by Gradle
+/android/.gradle/
+/android/app/build/
+/android/app/src/main/jniLibs/
+/android/app/src/main/assets/
+/android/app/src/main/java/org/
+/android/local.properties
+/dist/

@@ -1,5 +1,7 @@
 #include "engine/core/resource_path.h"
 
+#include "engine/platform/android_platform.h"
+
 #include <SDL3/SDL.h>
 
 #ifdef __APPLE__
@@ -11,6 +13,10 @@
 namespace pt {
 
 std::filesystem::path ExecutableDir() {
+#ifdef __ANDROID__
+    // an APK has no folder of its own: pt-runtime in the app's private storage (platform/android_platform.h)
+    if (const std::filesystem::path runtime = android::RuntimeDir(); !runtime.empty()) return runtime;
+#endif
     const char* base = SDL_GetBasePath();
     return base ? std::filesystem::path(reinterpret_cast<const char8_t*>(base)) : std::filesystem::current_path();
 }

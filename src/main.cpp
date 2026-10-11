@@ -67,6 +67,7 @@
 #include "engine/platform/settings.h"
 #include "engine/platform/display_modes.h"
 #include "engine/platform/os.h"
+#include "engine/platform/android_platform.h"
 #include "engine/platform/sdl_diag.h"
 #include "engine/platform/user_data.h"
 #include "engine/platform/graphics_presets.h"
@@ -5296,6 +5297,10 @@ bool WouldOpenWindow(const Options& options) {
 }
 
 int main(int argc, char** argv) {
+#ifdef __ANDROID__
+    // the shaders and fonts the desktop builds find next to the executable are copied out of the APK first (docs/android.md)
+    const bool android_runtime_ready = pt::android::PrepareRuntime();
+#endif
 #ifdef _WIN32
     const HANDLE inherited = GetStdHandle(STD_ERROR_HANDLE);
     if ((inherited == nullptr || inherited == INVALID_HANDLE_VALUE) && AttachConsole(ATTACH_PARENT_PROCESS)) {
@@ -5349,9 +5354,19 @@ int main(int argc, char** argv) {
 #ifdef _WIN32
     const std::string driver_advice = "Install the latest graphics driver from NVIDIA, AMD or Intel (a clean reinstall fixed this for other "
                                       "players), and close overlays such as RivaTuner or MSI Afterburner. P.T. needs a GPU with Vulkan 1.3.";
+#elif defined(__ANDROID__)
+    const std::string driver_advice = "P.T. needs a GPU and driver with Vulkan 1.3 (Android 13 or newer on a recent Snapdragon, Mali or "
+                                      "Immortalis chip). On Android 12 and older, or a chip with an old driver, it cannot run.";
 #else
     const std::string driver_advice = "Make sure your graphics driver provides Vulkan 1.3 (Mesa 23 or newer, or the NVIDIA driver) and that "
                                       "P.T. runs inside your desktop session.";
+#endif
+#ifdef __ANDROID__
+    if (!android_runtime_ready) {
+        startup_failure("The game's shaders and fonts could not be copied out of the app.",
+                        "Free some storage on the device and start P.T. again.");
+        return 1;
+    }
 #endif
     if (HeadlessOnly() && WouldOpenWindow(options)) {
         pt::LogError("refused: PT_HEADLESS_ONLY set, run would open a window");
@@ -5555,9 +5570,12 @@ int main(int argc, char** argv) {
         if (!settings_loaded) {
             pt::SaveAppSettings(app.settings_path, app.settings);
         }
+#ifndef __ANDROID__
+        // the update notice names the Windows, Linux and macOS downloads of the upstream releases; none is for this build
         if (app.settings.network.check_updates && !options.no_update_check) {
             app.updates.Start();
         }
+#endif
     }
     // tests: the answer without a request, headless too (Checker::Fake does nothing once a real check has started)
     if (!options.fake_update.empty() && !options.no_update_check) {

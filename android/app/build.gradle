@@ -1,0 +1,60 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.ptport.android'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.ptport.android'
+        minSdk 29
+        targetSdk 34
+        versionCode 1
+        versionName '1.0.3-android'
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+    }
+
+    // One fixed key for every build, so a new APK installs over the old one and keeps the imported game files
+    // (a key made fresh on each CI run would force an uninstall, which deletes them). It is a throwaway key for
+    // sideloading, not a store key.
+    signingConfigs {
+        ptport {
+            storeFile file('../pt-port.keystore')
+            storePassword 'ptportandroid'
+            keyAlias 'ptport'
+            keyPassword 'ptportandroid'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.ptport
+        }
+        debug {
+            signingConfig signingConfigs.ptport
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // libwhisper.so and ggml are dlopen'ed by name later; keep libraries extracted on disk
+            useLegacyPackaging = true
+        }
+    }
+
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['src/main/jniLibs']
+            assets.srcDirs = ['src/main/assets']
+        }
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
