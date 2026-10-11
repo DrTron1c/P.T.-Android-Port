@@ -32,6 +32,9 @@ android {
     buildTypes {
         release {
             minifyEnabled false
+            // debuggable only so that "adb shell run-as com.ptport.android cat files/pt-runtime/data/pt.log" can read the game's
+            // log; the native code is built with the same optimization either way
+            debuggable true
             signingConfig signingConfigs.ptport
         }
         debug {
