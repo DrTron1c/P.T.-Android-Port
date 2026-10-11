@@ -38,12 +38,12 @@ jobs:
         run: |
           set -o pipefail
           export ANDROID_NDK_HOME="${ANDROID_NDK_LATEST_HOME}"
-          tools/android/build.sh native 2>&1 | tee build-native.log
+          bash tools/android/build.sh native 2>&1 | tee build-native.log
 
       - name: APK
         run: |
           set -o pipefail
-          tools/android/build.sh apk 2>&1 | tee build-apk.log
+          bash tools/android/build.sh apk 2>&1 | tee build-apk.log
 
       - uses: actions/upload-artifact@v4
         with:
