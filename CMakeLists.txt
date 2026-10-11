@@ -20,6 +20,10 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 if(ANDROID)
   # everything is linked into libmain.so (docs/android.md)
   set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+  # bionic's _FORTIFY_SOURCE=2 measures a pointer against the member it was taken from. Lua 5.1 reads a string's characters through
+  # `&gc->ts + 1`, a pointer just past the end of that member, so its strchr in the garbage collector aborted the game at the
+  # first collection ("FORTIFY: strchr: prevented read past end of buffer", in luaL_openlibs). The desktop builds have no such check.
+  add_compile_options(-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
