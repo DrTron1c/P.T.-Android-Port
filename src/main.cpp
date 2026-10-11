@@ -5308,6 +5308,8 @@ int main(int argc, char** argv) {
 #ifdef __ANDROID__
     // the shaders and fonts the desktop builds find next to the executable are copied out of the APK first (docs/android.md)
     const bool android_runtime_ready = pt::android::PrepareRuntime();
+    // the back button reaches the game as a key (the menu button) instead of closing the app
+    SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
 #endif
 #ifdef _WIN32
     const HANDLE inherited = GetStdHandle(STD_ERROR_HANDLE);
@@ -5566,6 +5568,9 @@ int main(int argc, char** argv) {
     }
     if (!options.headless) {
         pt::LogSdlVideoInUse();
+#ifdef __ANDROID__
+        SDL_DisableScreenSaver();
+#endif
         // a crash of an earlier session: asks once whether to send its dump and log to the developer
         pt::OfferCrashUpload(g_output_dir.empty() ? std::filesystem::path(".") : g_output_dir, std::string(pt::update::CurrentVersion()), true);
     }
