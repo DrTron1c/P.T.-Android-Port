@@ -18,10 +18,28 @@ toolchain at hand); what has been tried is listed under "Status" below.
 
 1. Install `P.T.PC.Port-Android-arm64.apk` (allow installs from the browser or file manager you opened it with). Every build is
    signed with the same key (`android/pt-port.keystore`), so a newer APK installs over an older one and keeps the game files.
+   This first install is the only one done by hand: from a build with the updater in it (see "Updates"), the app updates itself.
 2. The first start shows a page that asks for the dump folder. Choose the folder, or choose the two files themselves. Keep the
    screen on until the copy is done; then the game starts. Later starts go straight to the game.
 3. Settings, the save and `pt.log` are in the app's private storage (`pt-runtime/data`). Uninstalling the app deletes them and the
    copied game files.
+
+## Updates
+
+Every time the app starts it asks GitHub (the Releases of the repository it was built in) for a newer build. It waits at most six
+seconds for the answer; offline, it starts as usual.
+
+- A banner at the top says "Starting download...", then "Downloading update: N%" with a progress bar.
+- The finished file goes to Android's installer, which asks you to confirm. When the install is done the app has been replaced and
+  closed; open it again. The imported game files and settings stay.
+- The first time, Android asks you to allow this app to install updates ("Install unknown apps"): a Settings page opens, switch it
+  on and go back. If you cancel an install, or a download fails, the banner says so and the game starts anyway; the next start asks again.
+- The build number is the CI run number: it is the APK's versionCode and the release tag `android-build-N`. A release counts as newer
+  when its N is above the installed versionCode. A local build has versionCode 1, so it is always offered the newest CI build.
+- The downloaded file's SHA-256 is checked against the digest GitHub lists for the release asset, and Android refuses an APK that is not
+  signed with the same key as the installed app.
+
+The check reads only published releases, which is why the CI publishes a (pre)release rather than a draft; it keeps the newest three.
 
 ## Controls
 
@@ -45,6 +63,7 @@ How a platform piece differs from the Windows and Linux ones:
 |---|---|
 | executable folder | `pt-runtime` in the app's private storage (`platform/android_platform.cpp`); the APK's shaders and fonts are copied there at the start when the list in `pt_assets.txt` differs from the last copy |
 | game files | `pt-runtime/game/CUSA01127`, put there by `ImportActivity` (`android/app/src/main/java/com/ptport/android`) |
+| updates | `Updater.java` and the banner in `ImportActivity`: GitHub Releases API, a download streamed into a `PackageInstaller` session |
 | window | SDL's `SDLActivity` loads `libSDL3.so` and `libmain.so` (the `pt` target) and calls `SDL_main` |
 | Vulkan | the system's `libvulkan.so` through volk; the headers are fetched at volk's version (the NDK's are older) |
 | input | touch overlay in `platform/touch_controls.cpp`; SDL's mouse made of a touch is ignored in play and is the menus' pointer |
@@ -59,13 +78,15 @@ The Android NDK (r26 or newer), CMake 3.28, Ninja, Python 3, JDK 17 and Gradle 8
     tools/android/build.sh apk         # Gradle: dist/P.T.PC.Port-Android-arm64.apk
 
 `.github/workflows/android.yml` does both on GitHub's Linux runner for every push to the `android` branch or a manual run
-(Actions > Android > Run workflow). The APK is a workflow artifact and a draft release (visible to the repository owner under
-Releases). Whatever the result, the last step pushes a short log (status, the tail of each build log, the error lines) to the
+(Actions > Android > Run workflow). The APK is a workflow artifact and a published prerelease `android-build-N` (N is the run
+number, the app's versionCode; the newest three are kept), which is what the installed app's updater finds. Whatever the result, the last step pushes a short log (status, the tail of each build log, the error lines) to the
 `ci-logs` branch.
 
 ## Status
 
 - Written without an NDK in reach; the first builds were compiled by CI only. The touch code and the Android branches were
   syntax-checked on a desktop compiler.
+- The updater is written from the Android documentation and not tried on a device: the confirmation page of the installer on
+  HyperOS, a silent update (Android 12 and newer allow it only for an app that installed itself), the "Install unknown apps" flow.
 - Not tried on a device: Vulkan start-up on a phone or tablet GPU, the importer on a real storage provider, frame rate, the touch
   layout on different screen shapes.

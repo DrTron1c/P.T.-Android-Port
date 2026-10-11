@@ -26,7 +26,8 @@ native() {
 }
 
 apk() {
-  (cd android && gradle --no-daemon --console=plain assembleRelease)
+  # PT_VERSION_CODE: the CI's run number, the build number the app's update check compares (unset: 1, older than any CI build)
+  (cd android && gradle --no-daemon --console=plain assembleRelease -PptVersionCode="${PT_VERSION_CODE:-1}")
   mkdir -p dist
   cp android/app/build/outputs/apk/release/app-release.apk dist/P.T.PC.Port-Android-arm64.apk
   ls -l dist/P.T.PC.Port-Android-arm64.apk

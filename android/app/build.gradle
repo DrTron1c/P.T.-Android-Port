@@ -2,16 +2,27 @@ plugins {
     id 'com.android.application'
 }
 
+// The CI passes its run number as the versionCode (-PptVersionCode=N) and tags the release android-build-N, which is how the
+// app's update check (Updater.java) tells a newer build from the one installed. A local build is 1: older than any CI build.
+def ptVersionCode = (project.findProperty('ptVersionCode') ?: '1').toString().toInteger()
+// the GitHub repository whose releases the app checks: the one the CI runs in, else this fork
+def ptUpdateRepo = (project.findProperty('ptUpdateRepo') ?: System.getenv('GITHUB_REPOSITORY') ?: 'DrTron1c/pt-pc').toString()
+
 android {
     namespace 'com.ptport.android'
     compileSdk 34
+
+    buildFeatures {
+        buildConfig true
+    }
 
     defaultConfig {
         applicationId 'com.ptport.android'
         minSdk 29
         targetSdk 34
-        versionCode 1
-        versionName '1.0.3-android'
+        versionCode ptVersionCode
+        versionName "1.0.3-android.${ptVersionCode}"
+        buildConfigField 'String', 'UPDATE_REPO', "\"${ptUpdateRepo}\""
         ndk {
             abiFilters 'arm64-v8a'
         }

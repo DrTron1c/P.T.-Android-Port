@@ -14,6 +14,8 @@ permissions:
 
 jobs:
   app:
+    # the Android workflow publishes its APKs as releases tagged android-build-N; they are not macOS releases
+    if: github.event_name != 'release' || !startsWith(github.event.release.tag_name, 'android-')
     strategy:
       fail-fast: false
       matrix:

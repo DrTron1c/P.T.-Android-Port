@@ -1,6 +1,7 @@
 package com.ptport.android;
 
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -13,6 +14,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
+import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
@@ -37,10 +39,19 @@ import java.util.Map;
  * chunk1.psarc and texture.qar, nothing of which is in this app). The first start asks for that copy and copies the
  * archives into the app's private storage, where the game finds them at pt-runtime/game/CUSA01127; every later start goes
  * straight to the game.
+ *
+ * Every start first asks GitHub whether a newer build exists (Updater). If one does, a banner at the top says so, shows the
+ * download's progress, and Android's installer takes over; if not (or if GitHub cannot be reached within a few seconds),
+ * the start goes on as above.
  */
 public class ImportActivity extends Activity {
     private static final int REQUEST_TREE = 1;
     private static final int REQUEST_FILES = 2;
+
+    // how long a start waits for the update check before it goes on without the answer
+    private static final long CHECK_DEADLINE_MS = 6000;
+    // how long an update problem stays readable before the start goes on
+    private static final long FAILURE_SHOWN_MS = 3000;
 
     private static final String[] REQUIRED = { "chunk1.psarc", "texture.qar" };
     // only the optional enhanced textures need it, and they are not in the Android build yet; copied when it is found
@@ -52,6 +63,32 @@ public class ImportActivity extends Activity {
     private Button folderButton;
     private Button filesButton;
     private volatile boolean busy;
+
+    private View content;
+    private LinearLayout banner;
+    private TextView bannerText;
+    private ProgressBar bannerBar;
+    private Updater updater;
+    private boolean checkDone;
+    private boolean proceeded;
+    // an update found while this app may not install packages yet: the player is in Settings turning that on
+    private Updater.Release waitingForPermission;
+
+    private final Runnable checkDeadline = new Runnable() {
+        @Override
+        public void run() {
+            if (checkDone) return;
+            checkDone = true;
+            proceed();
+        }
+    };
+
+    private final Runnable proceedNow = new Runnable() {
+        @Override
+        public void run() {
+            proceed();
+        }
+    };
 
     /** pt-runtime/game/CUSA01127 in the app's files: native code looks for the same place (android_platform.cpp). */
     static File gameDir(Context context) {
@@ -70,16 +107,126 @@ public class ImportActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        if (hasGame(this)) {
-            startGame();
-            return;
-        }
         buildUi();
+        // the page below the banner waits for the update check, so a start that finds an update never flashes the game
+        content.setVisibility(View.GONE);
+        showBanner("Checking for updates...", -1, false);
+        updater = new Updater(this, updateListener);
+        updater.start();
+        ui.postDelayed(checkDeadline, CHECK_DEADLINE_MS);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (waitingForPermission != null) {
+            // back from the Settings page for "install unknown apps"
+            Updater.Release release = waitingForPermission;
+            waitingForPermission = null;
+            if (updater.canInstall()) updater.install(release);
+            else proceed();
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        ui.removeCallbacks(checkDeadline);
+        ui.removeCallbacks(proceedNow);
+        if (updater != null) updater.close();
+        super.onDestroy();
+    }
+
+    /** The start goes on without (or after) an update: the game when its files are here, else the page that asks for them. */
+    private void proceed() {
+        if (proceeded) return;
+        proceeded = true;
+        ui.removeCallbacks(checkDeadline);
+        ui.removeCallbacks(proceedNow);
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        banner.setVisibility(View.GONE);
+        if (hasGame(this)) startGame();
+        else content.setVisibility(View.VISIBLE);
     }
 
     private void startGame() {
         startActivity(new Intent(this, PTActivity.class));
         finish();
+    }
+
+    /** percent below 0 is an unmeasured wait (a moving bar); a failure is shown in red. */
+    private void showBanner(String message, int percent, boolean failure) {
+        banner.setBackgroundColor(failure ? Color.rgb(122, 31, 31) : Color.rgb(31, 58, 95));
+        bannerText.setText(message);
+        bannerBar.setIndeterminate(percent < 0);
+        if (percent >= 0) bannerBar.setProgress(percent);
+        banner.setVisibility(View.VISIBLE);
+    }
+
+    private final Updater.Listener updateListener = new Updater.Listener() {
+        @Override
+        public void onChecked(Updater.Release newer) {
+            if (checkDone) return;   // the deadline already let the start go on
+            checkDone = true;
+            ui.removeCallbacks(checkDeadline);
+            if (newer == null) {
+                proceed();
+                return;
+            }
+            if (!updater.canInstall()) {
+                // Android keeps "install unknown apps" off for an app until the player turns it on, once
+                waitingForPermission = newer;
+                showBanner("Update available (build " + newer.build + "). Allow this app to install updates, then come back.", -1, false);
+                try {
+                    startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName())));
+                } catch (ActivityNotFoundException e) {
+                    waitingForPermission = null;
+                    onFailed("this device has no page to allow installs from this app");
+                }
+                return;
+            }
+            updater.install(newer);
+        }
+
+        @Override
+        public void onDownloadStarting(Updater.Release release) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            showBanner("Starting download... (build " + release.build + ")", -1, false);
+        }
+
+        @Override
+        public void onDownloadProgress(int percent) {
+            showBanner("Downloading update: " + percent + "%", percent, false);
+        }
+
+        @Override
+        public void onInstalling() {
+            showBanner("Download complete. Confirm the install when Android asks; the app closes while it updates, then open it again.", 100, false);
+        }
+
+        @Override
+        public void onFailed(String message) {
+            if (proceeded) return;
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            showBanner("Update " + ("cancelled".equals(message) ? "cancelled." : "failed: " + message + "."), 0, true);
+            ui.postDelayed(proceedNow, FAILURE_SHOWN_MS);
+        }
+    };
+
+    private View buildBanner(int pad) {
+        banner = new LinearLayout(this);
+        banner.setOrientation(LinearLayout.VERTICAL);
+        banner.setVisibility(View.GONE);
+
+        bannerText = new TextView(this);
+        bannerText.setTextSize(15);
+        bannerText.setTextColor(Color.WHITE);
+        bannerText.setPadding(pad, pad / 2, pad, pad / 2);
+        banner.addView(bannerText);
+
+        bannerBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        bannerBar.setMax(100);
+        banner.addView(bannerBar, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (int) (4 * getResources().getDisplayMetrics().density)));
+        return banner;
     }
 
     private void buildUi() {
@@ -138,9 +285,15 @@ public class ImportActivity extends Activity {
         column.addView(status);
 
         ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(Color.BLACK);
         scroll.addView(column);
-        setContentView(scroll);
+        content = scroll;
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(Color.BLACK);
+        root.addView(buildBanner(pad), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        root.addView(scroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        setContentView(root);
     }
 
     private void chooseFolder() {

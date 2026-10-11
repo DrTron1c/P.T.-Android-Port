@@ -1,6 +1,7 @@
 # The Android app (docs/android.md): arm64, built with the NDK on GitHub's Linux runner. A push to the android branch or a manual run
-# (Actions > Android > Run workflow) builds it; the APK is a workflow artifact and a draft release ("Android build <n>", under Releases,
-# visible to the repository owner). The last step always pushes a short log of the run to the ci-logs branch.
+# (Actions > Android > Run workflow) builds it; the APK is a workflow artifact and a published prerelease ("Android build <n>", tag
+# android-build-<n>, under Releases), which the installed app finds by itself when it starts (Updater.java). The last step always
+# pushes a short log of the run to the ci-logs branch.
 name: Android
 
 on:
@@ -45,6 +46,9 @@ jobs:
           bash tools/android/build.sh native 2>&1 | tee build-native.log
 
       - name: APK
+        env:
+          # the build number: the APK's versionCode and the release tag android-build-N, which the app's update check compares
+          PT_VERSION_CODE: ${{ github.run_number }}
         run: |
           set -o pipefail
           bash tools/android/build.sh apk 2>&1 | tee build-apk.log
@@ -54,19 +58,29 @@ jobs:
           name: P.T.PC.Port-Android-arm64
           path: dist/P.T.PC.Port-Android-arm64.apk
 
-      - name: Draft release with the APK
+      - name: Publish the release with the APK
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # drafts do not fire the macOS workflow's "release published" trigger; keep only the newest Android draft
-          for id in $(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[] | select(.draft) | select(.tag_name | startswith("android-build")) | .id'); do
+          # The app checks these releases when it starts (Updater.java), so they are published, not drafts: a prerelease named
+          # android-build-N, N being the APK's versionCode. A prerelease is never "Latest" and the macOS workflow and the
+          # desktop updater ignore it.
+          # Drafts left by earlier versions of this step are removed.
+          for id in $(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.draft) | select(.tag_name | startswith("android-build")) | .id'); do
             gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id" || true
           done
           gh release create "android-build-$GITHUB_RUN_NUMBER" dist/P.T.PC.Port-Android-arm64.apk \
-            --draft --prerelease --target "$GITHUB_SHA" \
+            --prerelease --target "$GITHUB_SHA" \
             --title "Android build $GITHUB_RUN_NUMBER (${GITHUB_SHA::7})" \
-            --notes "arm64 APK from commit $GITHUB_SHA. Needs your own P.T. dump (CUSA01127); see docs/android.md." \
+            --notes "arm64 APK from commit $GITHUB_SHA. Needs your own P.T. dump (CUSA01127); see docs/android.md. An installed copy of the app finds this build by itself when it starts." \
             --repo "$GITHUB_REPOSITORY" || echo "release step failed (the APK is still a workflow artifact)"
+          # keep the newest three Android releases (and their tags)
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '[.[] | select(.tag_name | startswith("android-build-"))] | sort_by(.created_at) | reverse | .[3:] | .[] | "\(.id) \(.tag_name)"' |
+          while read -r id tag; do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id" || true
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" || true
+          done
 
       - name: Push a short log to ci-logs
         if: always()
