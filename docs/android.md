@@ -9,18 +9,21 @@ toolchain at hand); what has been tried is listed under "Status" below.
 - Android 10 or newer on arm64, with a GPU and driver that offer Vulkan 1.3 and the features the renderer checks for at start
   (`vk_context.cpp`; the log names a missing one). Android 13 or newer on a recent Snapdragon, Mali or Immortalis chip is the
   realistic floor.
-- Your own copy of P.T. (the US release, CUSA01127) as a dump folder on the device: the app has no game files in it. It needs
+- Your own copy of P.T. (the US release, CUSA01127) on the device: the app has no game files in it. Either a dump folder with
   `chunk1.psarc` and `texture.qar` (the folder the desktop installer calls the dump; the files can be anywhere inside the
-  folder you pick).
-- Free space for a second copy of those two files (several GB): the app copies them into its private storage once.
+  folder you pick), or a fake PKG (fPKG) made from such a dump. A PlayStation Store (retail) PKG cannot be used: it is encrypted
+  for the console that owns the license, and neither this app nor the desktop installer decrypts it.
+- Free space for a second copy of those two files (several GB): the app copies them (or extracts them from the PKG) into its
+  private storage once.
 
 ## Installing and the first start
 
 1. Install `P.T.PC.Port-Android-arm64.apk` (allow installs from the browser or file manager you opened it with). Every build is
    signed with the same key (`android/pt-port.keystore`), so a newer APK installs over an older one and keeps the game files.
    This first install is the only one done by hand: from a build with the updater in it (see "Updates"), the app updates itself.
-2. The first start shows a page that asks for the dump folder. Choose the folder, or choose the two files themselves. Keep the
-   screen on until the copy is done; then the game starts. Later starts go straight to the game.
+2. The first start shows a page that asks for the game. Choose the dump folder, or the two files themselves, or the fPKG file
+   ("Or choose a fake PKG"; a folder that holds only one PKG works too). Keep the screen on until the copy is done; then the game
+   starts. Later starts go straight to the game.
 3. Settings, the save and `pt.log` are in the app's private storage (`pt-runtime/data`). Uninstalling the app deletes them and the
    copied game files.
 
@@ -62,7 +65,7 @@ How a platform piece differs from the Windows and Linux ones:
 | Piece | Android |
 |---|---|
 | executable folder | `pt-runtime` in the app's private storage (`platform/android_platform.cpp`); the APK's shaders and fonts are copied there at the start when the list in `pt_assets.txt` differs from the last copy |
-| game files | `pt-runtime/game/CUSA01127`, put there by `ImportActivity` (`android/app/src/main/java/com/ptport/android`) |
+| game files | `pt-runtime/game/CUSA01127`, put there by `ImportActivity` (`android/app/src/main/java/com/ptport/android`); from a fake PKG by `PkgExtractor` |
 | updates | `Updater.java` and the banner in `ImportActivity`: GitHub Releases API, a download streamed into a `PackageInstaller` session |
 | window | SDL's `SDLActivity` loads `libSDL3.so` and `libmain.so` (the `pt` target) and calls `SDL_main` |
 | Vulkan | the system's `libvulkan.so` through volk; the headers are fetched at volk's version (the NDK's are older) |
@@ -82,11 +85,28 @@ The Android NDK (r26 or newer), CMake 3.28, Ninja, Python 3, JDK 17 and Gradle 8
 number, the app's versionCode; the newest three are kept), which is what the installed app's updater finds. Whatever the result, the last step pushes a short log (status, the tail of each build log, the error lines) to the
 `ci-logs` branch.
 
+## Fake PKG import
+
+`PkgExtractor.java` is the Java form of what the desktop installer's helper does with LibOrbisPkg (`installer/Extractor`,
+docs/installer.md has what is accepted and refused). A fake package's PFS key is derived from its own content ID and the
+standard passcode (32 zeros); the key's digest in the package says whether that is what the package was made with. If it is
+not (a store package, or a fake one made with another passcode) the package is refused with the dump message. Then: the outer
+PFS image (AES-XTS from its sector 16 on), its `pfs_image.dat` (PFSC, deflate blocks), the inner PFS image, and in it
+`chunk1.psarc`, `texture.qar` and `pathid_list_ps4.bin`, found by content as the desktop helper does, written under those names
+with a `source.txt`.
+
+`tools/android/pkgtest/run.sh` tests it on a desktop JDK against synthetic packages built after LibOrbisPkg's builder
+(`make_test_pkgs.py`, needs python3 with `cryptography`): the IEEE 1619 XTS vectors, a signed and an unsigned outer image, the
+newer key derivation, a fragmented file, a file past the doubly indirect block limit, archives found by content in a subfolder,
+and the refusals (other passcode, not a PKG, truncated, another game).
+
 ## Status
 
 - Written without an NDK in reach; the first builds were compiled by CI only. The touch code and the Android branches were
   syntax-checked on a desktop compiler.
 - The updater is written from the Android documentation and not tried on a device: the confirmation page of the installer on
   HyperOS, a silent update (Android 12 and newer allow it only for an app that installed itself), the "Install unknown apps" flow.
+- The PKG import is tested on synthetic packages only, not on a real fPKG of P.T. or on a phone (speed, the storage provider's
+  file descriptor).
 - Not tried on a device: Vulkan start-up on a phone or tablet GPU, the importer on a real storage provider, frame rate, the touch
   layout on different screen shapes.

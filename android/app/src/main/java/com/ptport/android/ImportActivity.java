@@ -12,6 +12,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.ParcelFileDescriptor;
 import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
@@ -25,12 +26,16 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.channels.FileChannel;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -40,6 +45,9 @@ import java.util.Map;
  * archives into the app's private storage, where the game finds them at pt-runtime/game/CUSA01127; every later start goes
  * straight to the game.
  *
+ * The files can come three ways: the dump folder, the two files themselves, or a fake PKG (fPKG) of the game, from which
+ * PkgExtractor takes the archives (it refuses a store PKG).
+ *
  * Every start first asks GitHub whether a newer build exists (Updater). If one does, a banner at the top says so, shows the
  * download's progress, and Android's installer takes over; if not (or if GitHub cannot be reached within a few seconds),
  * the start goes on as above.
@@ -47,6 +55,7 @@ import java.util.Map;
 public class ImportActivity extends Activity {
     private static final int REQUEST_TREE = 1;
     private static final int REQUEST_FILES = 2;
+    private static final int REQUEST_PKG = 3;
 
     // how long a start waits for the update check before it goes on without the answer
     private static final long CHECK_DEADLINE_MS = 6000;
@@ -62,7 +71,10 @@ public class ImportActivity extends Activity {
     private ProgressBar progress;
     private Button folderButton;
     private Button filesButton;
+    private Button pkgButton;
     private volatile boolean busy;
+    // .pkg files met while looking through a picked folder or picked files; used when the archives themselves are not there
+    private final List<Uri> pickedPkgs = new ArrayList<Uri>();
 
     private View content;
     private LinearLayout banner;
@@ -247,7 +259,9 @@ public class ImportActivity extends Activity {
                 + "your PS4: the files chunk1.psarc and texture.qar.\n\n"
                 + "Copy the dump folder to this device, then choose it below. The two files are copied into the app's own "
                 + "storage once (several GB), so keep the screen on until it says it is done. You can delete the copy on "
-                + "your device afterwards.");
+                + "your device afterwards.\n\n"
+                + "If you have a fake PKG (fPKG) of the game instead, choose that file: the app takes the two archives out of "
+                + "it the same way. A PlayStation Store PKG cannot be opened.");
         text.setTextSize(15);
         text.setTextColor(Color.LTGRAY);
         text.setPadding(0, pad / 2, 0, pad / 2);
@@ -272,6 +286,16 @@ public class ImportActivity extends Activity {
             }
         });
         column.addView(filesButton);
+
+        pkgButton = new Button(this);
+        pkgButton.setText("Or choose a fake PKG (fPKG)");
+        pkgButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                choosePkg();
+            }
+        });
+        column.addView(pkgButton);
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(1000);
@@ -302,6 +326,14 @@ public class ImportActivity extends Activity {
         startActivityForResult(intent, REQUEST_TREE);
     }
 
+    private void choosePkg() {
+        if (busy) return;
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        startActivityForResult(intent, REQUEST_PKG);
+    }
+
     private void chooseFiles() {
         if (busy) return;
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -316,7 +348,10 @@ public class ImportActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null || busy) return;
         final Map<String, Uri> found = new LinkedHashMap<String, Uri>();
-        if (requestCode == REQUEST_TREE && data.getData() != null) {
+        pickedPkgs.clear();
+        if (requestCode == REQUEST_PKG && data.getData() != null) {
+            beginPkg(data.getData());
+        } else if (requestCode == REQUEST_TREE && data.getData() != null) {
             setBusy(true, "Looking for the game files...");
             final Uri tree = data.getData();
             new Thread(new Runnable() {
@@ -345,6 +380,11 @@ public class ImportActivity extends Activity {
     private void addPicked(Uri uri, Map<String, Uri> found) {
         String name = displayName(uri);
         if (name != null && isWanted(name) && !found.containsKey(name)) found.put(name, uri);
+        else if (name != null && isPkgName(name)) pickedPkgs.add(uri);
+    }
+
+    private static boolean isPkgName(String name) {
+        return name.toLowerCase(Locale.ROOT).endsWith(".pkg");
     }
 
     private String displayName(Uri uri) {
@@ -405,6 +445,10 @@ public class ImportActivity extends Activity {
                         }
                     } else if (name != null && isWanted(name) && !found.containsKey(name)) {
                         found.put(name, DocumentsContract.buildDocumentUriUsingTree(tree, childId));
+                    } else if (name != null && isPkgName(name)) {
+                        synchronized (pickedPkgs) {
+                            pickedPkgs.add(DocumentsContract.buildDocumentUriUsingTree(tree, childId));
+                        }
                     }
                 }
             } catch (Exception ignored) {
@@ -419,16 +463,24 @@ public class ImportActivity extends Activity {
         busy = value;
         folderButton.setEnabled(!value);
         filesButton.setEnabled(!value);
+        pkgButton.setEnabled(!value);
         status.setText(message);
         if (value) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
 
     private void beginCopy(final Map<String, Uri> found) {
+        boolean complete = true;
+        for (String required : REQUIRED) complete &= found.containsKey(required);
+        if (!complete && pickedPkgs.size() == 1) {
+            // no archives there, but one PKG: the archives are taken out of it
+            beginPkg(pickedPkgs.get(0));
+            return;
+        }
         for (String required : REQUIRED) {
             if (!found.containsKey(required)) {
                 setBusy(false, "Could not find " + required + " there. Choose the folder that holds the dump's chunk1.psarc "
-                        + "and texture.qar (or pick both files).");
+                        + "and texture.qar (or pick both files, or a fake PKG).");
                 progress.setVisibility(View.GONE);
                 return;
             }
@@ -473,6 +525,72 @@ public class ImportActivity extends Activity {
         }).start();
     }
 
+    /** Takes chunk1.psarc and texture.qar out of a fake PKG (PkgExtractor) into the game folder. */
+    private void beginPkg(final Uri uri) {
+        setBusy(true, "Opening the package...");
+        progress.setProgress(0);
+        progress.setVisibility(View.VISIBLE);
+        final File dir = gameDir(this);
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String error = null;
+                ParcelFileDescriptor fd = null;
+                FileInputStream in = null;
+                try {
+                    fd = getContentResolver().openFileDescriptor(uri, "r");
+                    if (fd == null) throw new IOException("cannot open the file");
+                    in = new ParcelFileDescriptor.AutoCloseInputStream(fd);
+                    FileChannel channel = in.getChannel();
+                    PkgExtractor.extract(PkgExtractor.ofChannel(channel), dir, new PkgExtractor.Progress() {
+                        private String current = "";
+                        private long lastReport;
+
+                        @Override
+                        public void status(final String message) {
+                            current = message.startsWith("Extracting ") ? message.substring(11) : message;
+                            ui.post(new Runnable() {
+                                @Override
+                                public void run() {
+                                    status.setText(message);
+                                }
+                            });
+                        }
+
+                        @Override
+                        public void bytes(long done, long total) {
+                            if (done - lastReport < (16L << 20) && done != total) return;
+                            lastReport = done;
+                            report(current, done, total, "Extracting");
+                        }
+                    });
+                } catch (PkgExtractor.PkgException e) {
+                    error = e.getMessage();
+                } catch (IOException e) {
+                    error = "Could not read the package: " + (e.getMessage() == null ? e.toString() : e.getMessage());
+                } finally {
+                    try {
+                        if (in != null) in.close();
+                        else if (fd != null) fd.close();
+                    } catch (IOException ignored) {
+                    }
+                }
+                final String message = error;
+                ui.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (message == null && hasGame(ImportActivity.this)) {
+                            startGame();
+                        } else {
+                            progress.setVisibility(View.GONE);
+                            setBusy(false, message == null ? "The package did not hold both archives." : message);
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
     private void copyAll(Map<String, Uri> found, long totalBytes) throws IOException {
         File dir = gameDir(this);
         long done = 0;
@@ -505,11 +623,15 @@ public class ImportActivity extends Activity {
     }
 
     private void report(final String name, final long done, final long total) {
+        report(name, done, total, "Copying");
+    }
+
+    private void report(final String name, final long done, final long total, final String verb) {
         ui.post(new Runnable() {
             @Override
             public void run() {
                 if (total > 0) progress.setProgress((int) (done * 1000 / total));
-                status.setText(String.format(Locale.US, "Copying %s: %.1f of %.1f GB", name, done / 1073741824.0,
+                status.setText(String.format(Locale.US, "%s %s: %.1f of %.1f GB", verb, name, done / 1073741824.0,
                         total / 1073741824.0));
             }
         });
