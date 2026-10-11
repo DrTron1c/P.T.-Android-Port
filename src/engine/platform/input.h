@@ -2,6 +2,8 @@
 
 #include <glm/glm.hpp>
 
+#include "engine/platform/touch_controls.h"
+
 #include <array>
 #include <cstdint>
 #include <span>
@@ -194,6 +196,9 @@ public:
 
     InputSettings settings;
 
+    // The on-screen controls of the Android build (touch_controls.h); inert elsewhere
+    TouchControls& Touch() { return touch_; }
+
 private:
     struct Pad {
         SDL_Gamepad* handle = nullptr;
@@ -216,6 +221,7 @@ private:
     void UpdateRumble();
 
     std::vector<Pad> pads_;
+    TouchControls touch_;
     uint64_t use_counter_ = 0;
     float mouse_dx_ = 0.0f;
     float mouse_dy_ = 0.0f;

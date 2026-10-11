@@ -48,6 +48,9 @@ constexpr KeyBinding kKeyBindings[] = {
     {KeyAction::Act, SDL_SCANCODE_E, 0},
     {KeyAction::Act, SDL_SCANCODE_SPACE, 0},
     {KeyAction::Menu, SDL_SCANCODE_ESCAPE, 0},
+#ifdef __ANDROID__
+    {KeyAction::Menu, SDL_SCANCODE_AC_BACK, 0},
+#endif
     {KeyAction::Confirm, SDL_SCANCODE_RETURN, 0},
     {KeyAction::Confirm, SDL_SCANCODE_SPACE, 0},
     {KeyAction::Confirm, SDL_SCANCODE_E, 0},
@@ -524,7 +527,20 @@ void InputDevice::ProcessEvent(const SDL_Event& event) {
     case SDL_EVENT_GAMEPAD_REMOVED:
         Close(event.gdevice.which);
         break;
+    case SDL_EVENT_FINGER_DOWN:
+    case SDL_EVENT_FINGER_MOTION:
+    case SDL_EVENT_FINGER_UP:
+    case SDL_EVENT_FINGER_CANCELED:
+        // the overlay's fingers (Android, in play); a touch that starts one shows the keyboard-and-mouse prompts, as a mouse would
+        if (touch_.ProcessEvent(event, last_mouse_use_ == MouseUse::Look) && event.type == SDL_EVENT_FINGER_DOWN) {
+            any_edge_ = true;
+            last_from_gamepad_ = false;
+            UsePrompts(PromptStyle{}, 0);
+        }
+        break;
     case SDL_EVENT_MOUSE_MOTION:
+        // in play on Android the look comes from the fingers; the mouse SDL makes of a touch is only the menus' pointer
+        if (TouchControls::Supported() && event.motion.which == SDL_TOUCH_MOUSEID && last_mouse_use_ == MouseUse::Look) break;
         mouse_dx_ += event.motion.xrel;
         mouse_dy_ += event.motion.yrel;
         mouse_travel_ += std::abs(event.motion.xrel) + std::abs(event.motion.yrel);
@@ -554,6 +570,7 @@ void InputDevice::ProcessEvent(const SDL_Event& event) {
         }
         break;
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        if (TouchControls::Supported() && event.button.which == SDL_TOUCH_MOUSEID && last_mouse_use_ == MouseUse::Look) break;
         any_edge_ = true;
         last_from_gamepad_ = false;
         UsePrompts(PromptStyle{}, 0);
@@ -629,7 +646,12 @@ InputState InputDevice::Poll(bool keyboard_free, MouseUse mouse, bool pads_free)
     auto key = [&](SDL_Scancode code) {
         return (sdl_keys && sdl_keys[code]) || (static_cast<size_t>(code) < injected_keys_.size() && injected_keys_[code]);
     };
-    const SDL_MouseButtonFlags buttons = (mouse != MouseUse::None && video ? SDL_GetMouseState(nullptr, nullptr) : 0u) | injected_mouse_;
+    const TouchSample touch = touch_.Sample(mouse == MouseUse::Look);
+    SDL_MouseButtonFlags polled_buttons = mouse != MouseUse::None && video ? SDL_GetMouseState(nullptr, nullptr) : 0u;
+    // on Android the only mouse is the one SDL makes of a touch, whose left button must not press the action while the overlay's
+    // fingers drive the game
+    if (TouchControls::Supported() && mouse == MouseUse::Look) polled_buttons = 0u;
+    const SDL_MouseButtonFlags buttons = polled_buttons | injected_mouse_;
     // Mouse bindings count in play; on the option screen only the zoom's (the photo option, 0x1285F80 reads R3, follows the right button
     // as in play) and a left click stays a click
     auto held = [&](KeyAction action) {
@@ -653,6 +675,9 @@ InputState InputDevice::Poll(bool keyboard_free, MouseUse mouse, bool pads_free)
     if (glm::length(move) > 1.0f) {
         move = glm::normalize(move);
     }
+    if (glm::length(touch.stick) > glm::length(move)) {
+        move = touch.stick;
+    }
     state.left_stick = move;
     if (held(KeyAction::PadUp)) raw |= kRawUp;
     if (held(KeyAction::PadDown)) raw |= kRawDown;
@@ -663,15 +688,16 @@ InputState InputDevice::Poll(bool keyboard_free, MouseUse mouse, bool pads_free)
     // zoom: the right mouse button (no key: Shift was too easy to press while walking with WASD, and the user wants the right button only)
     if (held(KeyAction::Zoom)) raw |= kRawR3;
     if (held(KeyAction::Act)) raw |= kRawCross;
+    raw |= touch.raw;
     const bool gouge_key = key(SDL_SCANCODE_X);
-    state.gouge_pressed = gouge_key && !previous_gouge_key_;
+    state.gouge_pressed = (gouge_key && !previous_gouge_key_) || touch.gouge;
     previous_gouge_key_ = gouge_key;
     // the option screen's "Return to the house" in the street walk (L1 on a pad)
     const bool house_key = mouse == MouseUse::Menu && held(KeyAction::MenuHouse);
     state.house_pressed = house_key && !previous_house_key_;
     previous_house_key_ = house_key;
     if (mouse == MouseUse::Look) {
-        state.mouse_look = glm::vec2(mouse_dx_, mouse_dy_) * settings.mouse_sensitivity;
+        state.mouse_look = (glm::vec2(mouse_dx_, mouse_dy_) + touch.look) * settings.mouse_sensitivity;
     }
     if (mouse != last_mouse_use_) {
         last_mouse_use_ = mouse;
@@ -682,6 +708,10 @@ InputState InputDevice::Poll(bool keyboard_free, MouseUse mouse, bool pads_free)
     } else if (mouse == MouseUse::Menu && mouse_travel_ >= kPromptMouseTravel && !key_pressed_since_poll_) {
         UsePrompts(PromptStyle{}, 0);
     }
+    if (touch.pause) pause_edge_ = true;
+    if (touch.settings) settings_edge_ = true;
+    if (touch.touched) any_edge_ = true;
+    state.voice_keyword_pressed |= touch.voice;
     key_pressed_since_poll_ = false;
     mouse_travel_ = 0.0f;
     mouse_dx_ = 0.0f;
@@ -759,6 +789,7 @@ InputState InputDevice::Poll(bool keyboard_free, MouseUse mouse, bool pads_free)
     state.any_button = any_edge_;
     state.from_gamepad = state.from_gamepad || last_from_gamepad_;
     state.prompts = prompts_;
+    touch_.SetHidden(prompts_.device != PromptDevice::Keyboard);
     pause_edge_ = confirm_edge_ = cancel_edge_ = click_edge_ = right_click_edge_ = settings_edge_ = any_edge_ = false;
     return state;
 }

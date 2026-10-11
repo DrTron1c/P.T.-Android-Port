@@ -4179,6 +4179,10 @@ int RunGame(App& app, pt::Vfs& vfs) {
                     const std::string relative_error = relative ? std::string{} : SDL_GetError();
                     const bool grabbed = relative || SDL_SetWindowMouseGrab(app.window, true);
                     mouse_captured = grabbed;
+#ifdef __ANDROID__
+                    // a touch screen has no pointer to capture: play is play whether or not SDL could capture one
+                    mouse_captured = true;
+#endif
                     const char* driver = SDL_GetCurrentVideoDriver();
                     if (relative) {
                         pt::LogInfo("input: mouse captured with relative mode (SDL driver {})", driver ? driver : "none");
@@ -4817,6 +4821,10 @@ int RunGame(App& app, pt::Vfs& vfs) {
             ImGui_ImplVulkan_NewFrame();
             ImGui_ImplSDL3_NewFrame();
             ImGui::NewFrame();
+            if (pt::TouchControls::Supported() && !show_settings && !show_debug) {
+                // Android: the on-screen controls, drawn over the game in play (they draw nothing in the menus)
+                input.Touch().Draw(ImGui::GetForegroundDrawList(), io.DisplaySize.x, io.DisplaySize.y);
+            }
             if (show_debug) {
                 pt::game::DrawGameDebugPanel(game);
                 if (ImGui::Begin("View")) {
