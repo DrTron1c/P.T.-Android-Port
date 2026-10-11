@@ -108,6 +108,17 @@ uint32_t ProcessId() { return static_cast<uint32_t>(getpid()); }
 ProcessResult RunProcess(const std::filesystem::path& program, const std::vector<std::string>& args, const std::filesystem::path& working_dir,
                          const std::filesystem::path& log, const std::atomic<bool>& cancel, std::chrono::milliseconds timeout) {
     ProcessResult result;
+#ifdef __ANDROID__
+    // no helper programs run on Android (the texture upscaler and the installer's extractor are desktop tools), and bionic has no
+    // posix_spawn_file_actions_addchdir_np
+    (void)program;
+    (void)args;
+    (void)working_dir;
+    (void)log;
+    (void)cancel;
+    (void)timeout;
+    return result;
+#else
     const int log_fd = open(log.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
     if (log_fd < 0) return result;
     posix_spawn_file_actions_t actions;
@@ -144,6 +155,7 @@ ProcessResult RunProcess(const std::filesystem::path& program, const std::vector
     }
     result.exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
     return result;
+#endif
 }
 
 FileLock::FileLock(const std::filesystem::path& path) {
