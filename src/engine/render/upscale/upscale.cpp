@@ -25,7 +25,7 @@ struct KindInfo {
 
 constexpr KindInfo kKinds[] = {{"Off", "off"},           {"AMD FSR 3", "fsr3"},          {"NVIDIA DLSS", "dlss"},
                                {"Intel XeSS", "xess"},    {"Spatial (test)", "spatial"}, {"AMD FSR 4", "fsr4"},
-                               {"Apple MetalFX", "metalfx"}};
+                               {"Apple MetalFX", "metalfx"}, {"Built-in (temporal)", "builtin"}};
 
 constexpr const char* kDlssModels[] = {"auto", "k", "l", "m"};
 constexpr const char* kFrameGens[] = {"off", "fsr3", "dlss", "metalfx"};
@@ -735,6 +735,7 @@ bool UpscaleHost::Available(UpscalerKind kind, std::string& reason, bool probe) 
         case UpscalerKind::Dlss: backends_[i] = streamline::Active() ? CreateStreamlineDlssBackend(*ctx_) : CreateDlssBackend(*ctx_); break;
         case UpscalerKind::Xess: backends_[i] = CreateXessBackend(*ctx_); break;
         case UpscalerKind::MetalFx: backends_[i] = CreateMetalfxBackend(*ctx_); break;
+        case UpscalerKind::Builtin: backends_[i] = CreateBuiltinBackend(*ctx_); break;
         default: break;
         }
         if (!backends_[i]) {
@@ -747,6 +748,10 @@ bool UpscaleHost::Available(UpscalerKind kind, std::string& reason, bool probe) 
             // build choice (-DPT_METALFX=OFF).
             reasons_[i] = kind == UpscalerKind::MetalFx ? "Apple MetalFX is not built into this executable"
                                                         : "Windows only (DLSS, FSR and XeSS are not in the Linux and macOS builds)";
+#elif defined(__ANDROID__)
+            // the vendor SDKs are Windows DLLs and MetalFX is Apple's; the built-in upscaler is the Android build's (docs/android.md)
+            reasons_[i] = kind == UpscalerKind::MetalFx ? "macOS only (Apple MetalFX)"
+                                                        : "Windows only (a vendor DLL); the Built-in upscaler works on Android";
 #else
             // the SDKs ship Windows DLLs, so the Linux and macOS builds leave DLSS, FSR and XeSS out (docs/linux.md); players read the
             // bare "not built into this executable" as a broken install

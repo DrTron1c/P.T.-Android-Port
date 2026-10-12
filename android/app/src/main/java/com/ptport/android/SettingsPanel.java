@@ -114,6 +114,15 @@ final class SettingsPanel {
         settings.add(new Setting(AUTO, "Automatic picture size",
                 "On: when the game cannot keep its frame rate, it lowers the picture size by a step, and raises it again when there is room, never above "
                         + "the size chosen above. Each change pauses the picture for a moment.", OFF_ON, ZERO_ONE));
+        settings.add(new Setting("upscaler", "Upscaler",
+                "Draws the game at a smaller size and rebuilds a sharp picture from several frames, so it can run faster at the same Picture size. "
+                        + "Built-in runs on any GPU (FSR 3, DLSS and XeSS are Windows only). Experimental.",
+                new String[] { "Off", "Built-in" }, new int[] { 0, 1 }));
+        settings.add(new Setting("upscale_quality", "Upscaler quality",
+                "How small the game draws before the upscaler rebuilds the picture: Quality is 67% of each side, Performance 50%. Smaller is faster and softer.",
+                new String[] { "Native (anti-aliasing only)", "Quality", "Balanced", "Performance", "Ultra performance" }, new int[] { 0, 1, 2, 3, 4 }));
+        settings.add(new Setting("upscale_sharpness", "Upscaler sharpness", "Sharpens the upscaled picture. Off leaves it as the upscaler made it.",
+                new String[] { "Off", "20%", "40%", "60%", "80%", "100%" }, new int[] { 0, 2, 4, 6, 8, 10 }));
         settings.add(new Setting(FPS, "Frame rate",
                 "The most frames a second the game draws. A steady lower rate looks smoother than a rate that rises and falls; the screen is asked to match it.",
                 new String[] { "No limit", "30", "40", "45", "60", "90", "120" }, new int[] { 0, 30, 40, 45, 60, 90, 120 }));
@@ -231,6 +240,12 @@ final class SettingsPanel {
         values.put(AUTO, AppPrefs.getInt(context, AUTO, 0) != 0 ? 1 : 0);
         values.put(COUNTER, clamp(AppPrefs.getInt(context, COUNTER, 0), 0, 2));
         values.put(FPS, number(ini, "display.fps_limit", 0));
+        String upscaler = ini.get("upscaling.upscaler");
+        values.put("upscaler", upscaler != null && upscaler.trim().equalsIgnoreCase("builtin") ? 1 : 0);
+        String quality = ini.get("upscaling.quality");
+        String q = quality == null ? "quality" : quality.trim().toLowerCase();
+        values.put("upscale_quality", q.equals("native") ? 0 : q.equals("balanced") ? 2 : q.equals("performance") ? 3 : q.equals("ultra_performance") ? 4 : 1);
+        values.put("upscale_sharpness", clamp(Math.round(decimal(ini, "upscaling.sharpness", 0.0f) * 10.0f), 0, 10));
         values.put("vsync", flag(ini, "display.vsync", true));
         values.put("shadows", clamp(number(ini, "graphics.shadow_quality", fresh ? 1 : 3), 0, 3));
         values.put("ambient_occlusion", flag(ini, "graphics.ambient_occlusion", !fresh));
@@ -457,6 +472,10 @@ final class SettingsPanel {
         settingRow(column, find(FPS));
         settingRow(column, find(COUNTER));
         settingRow(column, find("vsync"));
+        heading(column, "Upscaler");
+        settingRow(column, find("upscaler"));
+        settingRow(column, find("upscale_quality"));
+        settingRow(column, find("upscale_sharpness"));
         heading(column, "Lighting");
         settingRow(column, find("shadows"));
         settingRow(column, find("ambient_occlusion"));

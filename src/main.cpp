@@ -1310,8 +1310,9 @@ bool DrawUpscaleSettings(App& app) {
     pt::UpscaleSettings& u = app.scene.upscale;
     bool changed = false;
     ImGui::SeparatorText("Upscaling");
-    const pt::UpscalerKind kinds[] = {pt::UpscalerKind::Off, pt::UpscalerKind::Fsr, pt::UpscalerKind::Fsr4, pt::UpscalerKind::Dlss,
-                                      pt::UpscalerKind::Xess, pt::UpscalerKind::MetalFx};
+    const pt::UpscalerKind kinds[] = {pt::UpscalerKind::Off,  pt::UpscalerKind::Builtin, pt::UpscalerKind::Fsr,
+                                      pt::UpscalerKind::Fsr4, pt::UpscalerKind::Dlss,    pt::UpscalerKind::Xess,
+                                      pt::UpscalerKind::MetalFx};
     if (ImGui::BeginCombo("Upscaler", pt::UpscalerName(u.kind))) {
         for (pt::UpscalerKind kind : kinds) {
             std::string reason;
@@ -1350,8 +1351,8 @@ bool DrawUpscaleSettings(App& app) {
     if (u.quality == pt::UpscaleQuality::Custom) {
         changed |= ImGui::SliderFloat("Render scale", &u.scale, 0.33f, 1.0f, "%.2f");
     }
-    ImGui::BeginDisabled(u.kind != pt::UpscalerKind::Fsr && u.kind != pt::UpscalerKind::Fsr4);
-    changed |= ImGui::SliderFloat("Sharpness (FSR)", &u.sharpness, 0.0f, 1.0f, "%.2f");
+    ImGui::BeginDisabled(u.kind != pt::UpscalerKind::Fsr && u.kind != pt::UpscalerKind::Fsr4 && u.kind != pt::UpscalerKind::Builtin);
+    changed |= ImGui::SliderFloat("Sharpness (FSR, built-in)", &u.sharpness, 0.0f, 1.0f, "%.2f");
     ImGui::EndDisabled();
     if (u.kind == pt::UpscalerKind::Dlss) {
         const char* models[] = {"Auto (NVIDIA's default per quality)", "K", "L", "M"};
@@ -1989,10 +1990,10 @@ public:
         quality.enabled = !off;
         upscaling.rows.push_back(std::move(quality));
         const int sharpness_step = std::clamp(static_cast<int>(std::lround(u.sharpness * 10.0f)), 0, 10);
-        // the sharpening pass is FSR's own (RCAS, fsr_backend.cpp); DLSS and XeSS get no sharpness from the port, so the row
-        // only takes values with FSR (with the others it changed pt.ini and nothing on screen). With DLSS the row's place
-        // holds the DLSS model (the left column has no room for another row)
-        const bool fsr = u.kind == pt::UpscalerKind::Fsr || u.kind == pt::UpscalerKind::Fsr4;
+        // the sharpening pass is FSR's own (RCAS, fsr_backend.cpp) or the built-in upscaler's (builtin_upscale.comp); DLSS and
+        // XeSS get no sharpness from the port, so the row only takes values with those (with the others it changed pt.ini and
+        // nothing on screen). With DLSS the row's place holds the DLSS model (the left column has no room for another row)
+        const bool fsr = u.kind == pt::UpscalerKind::Fsr || u.kind == pt::UpscalerKind::Fsr4 || u.kind == pt::UpscalerKind::Builtin;
         if (u.kind == pt::UpscalerKind::Dlss) {
             pt::game::PcSettingRow model = Row(kDlssModel, "pc_dlss_model", {"pc_dlss_model_auto", "K", "L", "M"},
                                                std::clamp(static_cast<int>(u.dlss_model), 0, 3), "pc_note_dlss_model");
@@ -2751,7 +2752,8 @@ private:
             {"texture_detail", kTextureDetail},  {"anisotropy", kAnisotropy},      {"bloom", kBloom},
             {"depth_of_field", kDepthOfField},   {"motion_blur", kMotionBlur},     {"lens_distortion", kLensDistortion},
             {"lens_ghosts", kLensGhosts},        {"film_grain", kFilmGrain},       {"clarity", kClarity},
-            {"vsync", kVsync},
+            {"vsync", kVsync},                   {"upscaler", kUpscaler},          {"upscale_quality", kQuality},
+            {"upscale_sharpness", kSharpness},
         };
         if (name == "fps_limit") {
             // any number of frames a second (the page's own row has a list), 0 for no limit
@@ -3304,6 +3306,7 @@ private:
         case pt::UpscalerKind::Dlss: return "DLSS";
         case pt::UpscalerKind::Xess: return "XeSS";
         case pt::UpscalerKind::MetalFx: return "MetalFX";
+        case pt::UpscalerKind::Builtin: return "Built-in";
         default: return pt::UpscalerName(kind);
         }
     }
@@ -3313,8 +3316,8 @@ private:
     std::vector<pt::UpscalerKind> Upscalers(std::vector<std::string>* notes) const {
         std::vector<pt::UpscalerKind> kinds{pt::UpscalerKind::Off};
         if (notes) notes->assign(1, std::string());
-        for (const pt::UpscalerKind kind : {pt::UpscalerKind::Fsr, pt::UpscalerKind::Fsr4, pt::UpscalerKind::Dlss, pt::UpscalerKind::Xess,
-                                            pt::UpscalerKind::MetalFx}) {
+        for (const pt::UpscalerKind kind : {pt::UpscalerKind::Builtin, pt::UpscalerKind::Fsr, pt::UpscalerKind::Fsr4, pt::UpscalerKind::Dlss,
+                                            pt::UpscalerKind::Xess, pt::UpscalerKind::MetalFx}) {
             std::string reason;
             const bool available = app_.scene.UpscalerAvailable(kind, reason);
             kinds.push_back(kind);

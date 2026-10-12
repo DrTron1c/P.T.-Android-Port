@@ -153,6 +153,13 @@ The desktop settings are far too heavy for a tablet GPU at the tablet's own reso
   `PcSettings::Set`, as a tap on that row would, so it acts at once and `pt.ini` keeps it (`PcSettings::ApplyAndroidChanges`). With
   no game running the file waits for the next start. The picture size is in `AppPrefs` and takes effect at once
   (`PTActivity.applyPictureSize` resizes the fixed surface; the game sees a window of the new size).
+- The upscaler (Settings > Upscaler, Upscaler quality, Upscaler sharpness): FSR 3, FSR 4, DLSS and XeSS are Windows DLLs or need a
+  vendor's GPU and MetalFX is Apple's, so the game's Upscaler list shows them greyed. The Android build has its own, **Built-in**
+  (`builtin_backend.cpp`, `builtin_upscale.comp`; docs/upscaling.md, Built-in temporal upscaler): a compute shader that needs no
+  library and runs on any Vulkan GPU. It draws the scene at a fraction of the picture size (Quality is 2/3 of each side, Performance
+  1/2), jittered, and rebuilds the full size picture from the last frames. It is off by default, the presets do not touch it, and it
+  is untested on the tablet: the first builds that have it are the first run of its shader on an Adreno. The game's own settings page
+  (pause menu, PC settings) has the same Upscaler, Quality and Sharpness rows. If the picture goes wrong with it on, set Upscaler to Off.
 - The frame counter (Settings > Frame counter: Off, Frame rate, Detailed): once a second the game sends the Android message `0x8002`
   (frames a second x10 in 12 bits, GPU ms x4 in 9, CPU ms x4 in 9, averaged over the second) and `PTActivity` shows it in the top left
   corner, green at the frame limit, yellow below 95 % of it and red below 80 %; Detailed adds the GPU and CPU time of a frame and the
