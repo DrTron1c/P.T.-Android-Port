@@ -330,22 +330,26 @@ final class CrashReport {
         } finally {
             in.close();
         }
-        String[] wanted = { "exposure settled", "vulkan: swapchain", "scene renderer", "shadow atlas", "preset", "stage", "upscale",
-                "renderer:", "lighting", "probes", "textures" };
-        ArrayDeque<String> lines = new ArrayDeque<String>();
+        // the renderer's own lines first (they are few, and say what the picture is made of); the stage's lines flood the log, so
+        // only the last few of those
+        String[] renderer = { "exposure", "luminance", "vulkan: swapchain", "scene renderer", "shadow atlas", "preset", "upscale", "renderer:" };
+        String[] stage = { "stage", "lighting", "probes", "textures" };
+        ArrayDeque<String> rendererLines = new ArrayDeque<String>();
+        ArrayDeque<String> stageLines = new ArrayDeque<String>();
         for (String line : text.split("\r?\n")) {
             if (line.contains(" status: ")) continue;
-            for (String key : wanted) {
-                if (line.contains(key)) {
-                    lines.add(cut(line, LINE_CHARS));
-                    if (lines.size() > 28) lines.removeFirst();
-                    break;
-                }
+            if (matchesAny(line, renderer)) {
+                rendererLines.add(cut(line, LINE_CHARS));
+                if (rendererLines.size() > 22) rendererLines.removeFirst();
+            } else if (matchesAny(line, stage)) {
+                stageLines.add(cut(line, LINE_CHARS));
+                if (stageLines.size() > 8) stageLines.removeFirst();
             }
         }
         StringBuilder out = new StringBuilder("\n== renderer and stage lines in pt.log ==\n");
-        if (lines.isEmpty()) out.append("(none)\n");
-        for (String line : lines) out.append(line).append('\n');
+        if (rendererLines.isEmpty() && stageLines.isEmpty()) out.append("(none)\n");
+        for (String line : rendererLines) out.append(line).append('\n');
+        for (String line : stageLines) out.append(line).append('\n');
         return out.toString();
     }
 
@@ -749,6 +753,13 @@ final class CrashReport {
         } finally {
             in.close();
         }
+    }
+
+    private static boolean matchesAny(String line, String[] keys) {
+        for (String key : keys) {
+            if (line.contains(key)) return true;
+        }
+        return false;
     }
 
     private static String cut(String text, int max) {

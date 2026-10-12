@@ -342,6 +342,9 @@ private:
     void UploadFrame(FrameSlot& slot);
     void SetTppFog(const TppAtmosphereSettings& tpp);
     void ReadMeasurements(FrameSlot& slot, float dt, const ExposureSettings& settings);
+    // The sum and the pixel count of the slot's luminance partials; returns how many partials were not usable (a NaN, an infinity, a
+    // negative or an impossible count: what a buffer the GPU did not write holds). Those are left out of the sums.
+    uint32_t SumLuminance(const FrameSlot& slot, double& sum, double& count) const;
     void SettleExposure(const ExposureSettings& settings);
     float ExposureFor(float ev, const ExposureSettings& settings) const;
 

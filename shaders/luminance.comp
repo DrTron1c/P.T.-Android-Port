@@ -27,7 +27,13 @@ void main() {
             if (all(lessThan(p, size))) {
                 float depth = ImgFetch(IMG_DEPTH, p).x;
                 if (depth > 0.0) {
-                    acc += vec2(max(0.0, Luma709(ImgFetch(IMG_DIFFUSE, p).rgb)), 1.0);
+                    float luma = Luma709(ImgFetch(IMG_DIFFUSE, p).rgb);
+                    // The lit image holds half floats: one pixel with a NaN or an infinity (a GPU that divides by zero where the
+                    // desktop's gives a finite value) would turn the whole sum, and with it the exposure, into a NaN, and every lit
+                    // surface of the frame black. A comparison with a NaN is false, so this keeps the finite values only.
+                    if (luma < 60000.0) {
+                        acc += vec2(max(0.0, luma), 1.0);
+                    }
                 }
             }
         }

@@ -1222,6 +1222,25 @@ void SceneRenderer::ReadTimestamps(FrameSlot& slot) {
     stats_.gpu_ms = span(0, 6);
 }
 
+uint32_t SceneRenderer::SumLuminance(const FrameSlot& slot, double& sum, double& count) const {
+    const glm::vec2* partial = static_cast<const glm::vec2*>(slot.luminance.mapped);
+    sum = 0.0;
+    count = 0.0;
+    uint32_t unusable = 0;
+    for (uint32_t i = 0; i < slot.luminance_groups; ++i) {
+        const float s = partial[i].x;
+        const float c = partial[i].y;
+        // a workgroup covers 32 x 32 pixels; each comparison is false for a NaN
+        if (s >= 0.0f && s < 1.0e9f && c >= 0.0f && c <= 1024.0f) {
+            sum += s;
+            count += c;
+        } else {
+            ++unusable;
+        }
+    }
+    return unusable;
+}
+
 void SceneRenderer::ReadMeasurements(FrameSlot& slot, float dt, const ExposureSettings& settings) {
     if (slot.timed) {
         ReadTimestamps(slot);
@@ -1242,26 +1261,39 @@ void SceneRenderer::ReadMeasurements(FrameSlot& slot, float dt, const ExposureSe
         return;
     }
     vmaInvalidateAllocation(renderer_->Context().allocator, slot.luminance.allocation, 0, VK_WHOLE_SIZE);
-    const glm::vec2* partial = static_cast<const glm::vec2*>(slot.luminance.mapped);
     double sum = 0.0;
     double count = 0.0;
-    for (uint32_t i = 0; i < slot.luminance_groups; ++i) {
-        sum += partial[i].x;
-        count += partial[i].y;
-    }
+    const uint32_t unusable = SumLuminance(slot, sum, count);
     slot.measured = false;
+    if (unusable > 0) {
+        static uint32_t reported = 0;
+        if (reported < 3) {
+            ++reported;
+            LogWarn("scene renderer: {} of {} luminance partials were not usable (frame {})", unusable, slot.luminance_groups, frame_counter_);
+        }
+    }
     if (count <= 0.0) {
         return;
     }
     const float measured = static_cast<float>(sum / count);
+    if (!std::isfinite(measured)) {
+        return;
+    }
     stats_.luminance = measured;
     if (!adaptation_valid_ || !toggles.adaptation || !lighting_ || !lighting_->valid) {
         return;
+    }
+    // a NaN here would stay: the EV and with it the exposure would be one for good, and every lit surface black
+    if (!std::isfinite(ev_)) {
+        ev_ = 0.0f;
     }
     // 0xDA9B00 clamps the current EV into the floor's range before it steps (view +0x4CC against the min and max EV), so
     // a range that moves (a new floor's lighting row) takes the EV with it at once instead of easing in from outside it
     ev_ = std::clamp(ev_, settings.min_ev, settings.max_ev);
     const float raw = measured / std::max(slot.exposure_used, 1.0e-12f);
+    if (!std::isfinite(raw)) {
+        return;
+    }
     const float adapted = raw * std::exp2(ev_);
     const float target = std::clamp(ev_ + 0.5f * (std::log2(settings.key + 0.001f) - std::log2(adapted + 0.001f)), settings.min_ev, settings.max_ev);
     const float diff = target - ev_;
@@ -1269,7 +1301,9 @@ void SceneRenderer::ReadMeasurements(FrameSlot& slot, float dt, const ExposureSe
     if (std::abs(step) > std::abs(diff)) {
         step = diff;
     }
-    ev_ += step;
+    if (std::isfinite(step)) {
+        ev_ += step;
+    }
     // PT_EV_TRACE=1: each adaptation step (the measured luminance, the EV it moves toward, the EV after the step)
     if (static const bool ev_trace = std::getenv("PT_EV_TRACE") != nullptr; ev_trace) {
         LogInfo("ev trace: measured {:.5f} raw {:.5f} target {:.3f} ev {:.3f} dt {:.4f}", measured, raw, target, ev_, dt);

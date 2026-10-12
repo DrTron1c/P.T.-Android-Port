@@ -2510,6 +2510,17 @@ void SceneRenderer::RecordView(VkCommandBuffer cmd, const ViewSetup& view, Rende
 
 void SceneRenderer::SettleExposure(const ExposureSettings& settings) {
     FrameSlot& slot = slots_[renderer_->FrameIndex()];
+    {
+        // The partials start at zero: a buffer the GPU did not write then reads as nothing measured, not as what the memory held
+        // (the first Android log read a NaN there on the empty first frame, and the NaN stayed in the EV for good)
+        const uint32_t groups = ((extent_.width + 31) / 32) * ((extent_.height + 31) / 32);
+        if (slot.luminance.mapped && groups > 0 && groups <= gpu::kLuminanceGroups) {
+            const VkDeviceSize bytes = sizeof(glm::vec2) * groups;
+            std::memset(slot.luminance.mapped, 0, static_cast<size_t>(bytes));
+            vmaFlushAllocation(renderer_->Context().allocator, slot.luminance.allocation, 0, bytes);
+        }
+    }
+    slot.luminance_groups = 0;
     renderer_->Context().Submit([&](VkCommandBuffer cmd) {
         BeginLabel(cmd, "settle exposure");
         BindSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS);
@@ -2520,32 +2531,48 @@ void SceneRenderer::SettleExposure(const ExposureSettings& settings) {
         EndLabel(cmd);
     });
     vmaInvalidateAllocation(renderer_->Context().allocator, slot.luminance.allocation, 0, VK_WHOLE_SIZE);
-    const glm::vec2* partial = static_cast<const glm::vec2*>(slot.luminance.mapped);
     double sum = 0.0;
     double count = 0.0;
-    for (uint32_t i = 0; i < slot.luminance_groups; ++i) {
-        sum += partial[i].x;
-        count += partial[i].y;
-    }
+    const uint32_t unusable = SumLuminance(slot, sum, count);
     adaptation_valid_ = true;
+    // a NaN in the EV would stay for good (each step starts from it) and make every lit surface black
+    if (!std::isfinite(ev_)) {
+        ev_ = 0.0f;
+    }
+    if (!std::isfinite(exposure_) || exposure_ <= 0.0f) {
+        exposure_ = ExposureFor(ev_, settings) * renderer_->exposure;
+    }
     if (count <= 0.0) {
+        LogInfo("scene renderer: exposure not measured (no lit pixels counted; {} of {} luminance partials unusable), ev {:.2f}, {} draws", unusable,
+                slot.luminance_groups, ev_, draws_.size());
         return;
     }
     const float raw = static_cast<float>(sum / count) / std::max(exposure_, 1.0e-12f);
+    if (!std::isfinite(raw)) {
+        LogWarn("scene renderer: exposure not measured (luminance {} over {} pixels, exposure {})", sum, count, exposure_);
+        return;
+    }
     float ev = ev_;
     for (int i = 0; i < 64; ++i) {
         const float adapted = raw * std::exp2(ev);
         ev = std::clamp(ev + 0.5f * (std::log2(settings.key + 0.001f) - std::log2(adapted + 0.001f)), settings.min_ev, settings.max_ev);
     }
+    const float exposure = ExposureFor(ev, settings) * renderer_->exposure;
+    if (!std::isfinite(ev) || !std::isfinite(exposure) || exposure <= 0.0f) {
+        LogWarn("scene renderer: exposure not used (ev {}, exposure {}, luminance {}, key {}, ev range {} to {})", ev, exposure, raw, settings.key,
+                settings.min_ev, settings.max_ev);
+        return;
+    }
     ev_ = ev;
-    exposure_ = ExposureFor(ev_, settings) * renderer_->exposure;
+    exposure_ = exposure;
     for (uint32_t i = 0; i < view_count_; ++i) {
         frame_->views[i].exposure = glm::vec4(exposure_, 1.0f / std::max(exposure_, 1.0e-12f), ev_, frame_->views[i].exposure.w);
     }
     SetTppFog(lighting_->tpp);
     UploadFrame(slot);
-    LogInfo("scene renderer: exposure settled at ev {:.2f} (luminance {:.4f}, exposure {:.5f}), {} lights, {} probes, {} shadow views, {} draws", ev_,
-            raw, exposure_, light_count_, probe_count_, shadow_views_.size(), draws_.size());
+    LogInfo("scene renderer: exposure settled at ev {:.2f} (luminance {:.4f}, exposure {:.5f}), {} lights, {} probes, {} shadow views, {} draws "
+            "(luminance over {} pixels, {} of {} partials unusable)",
+            ev_, raw, exposure_, light_count_, probe_count_, shadow_views_.size(), draws_.size(), count, unusable, slot.luminance_groups);
 }
 
 void SceneRenderer::Render(const Camera& camera, const std::vector<DrawItem>& items) {
@@ -2621,6 +2648,19 @@ void SceneRenderer::Render(const Camera& camera, const std::vector<DrawItem>& it
     ReadUpscaleTimestamps(slot);
     if (lighting_->valid && toggles.adaptation) {
         exposure_ = ExposureFor(ev_, lighting_->exposure) * renderer_->exposure;
+        if (!std::isfinite(exposure_) || exposure_ <= 0.0f) {
+            // never a NaN into the frame: it multiplies every light, and everything lit comes out black
+            static bool reported = false;
+            if (!reported) {
+                reported = true;
+                LogWarn("scene renderer: exposure {} from ev {} is not usable; ev reset to 0", exposure_, ev_);
+            }
+            ev_ = 0.0f;
+            exposure_ = ExposureFor(ev_, lighting_->exposure) * renderer_->exposure;
+            if (!std::isfinite(exposure_) || exposure_ <= 0.0f) {
+                exposure_ = 1.0f;
+            }
+        }
     } else {
         exposure_ = renderer_->exposure;
     }

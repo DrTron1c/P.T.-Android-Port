@@ -5215,12 +5215,13 @@ int RunGame(App& app, pt::Vfs& vfs) {
                 }
                 const VkExtent2D render_extent = app.renderer.RenderExtent();
                 pt::LogInfo("status: {:.0f} fps, gpu {:.2f} ms, vram {:.0f} of {:.0f} MB, {}x{}, upscaler {} {}, frame generation {}, vsync {}, "
-                            "fps limit {}, floor {}{}",
+                            "fps limit {}, floor {}{}, ev {:.2f} exposure {:.5f} luminance {:.4f}, {} draws {} lights",
                             status_frames / status_seconds, status_gpu / std::max<uint64_t>(status_frames, 1), used / 1048576.0,
                             budget / 1048576.0, render_extent.width, render_extent.height, app.settings.upscaling.upscaler,
                             app.settings.upscaling.quality, app.settings.upscaling.frame_generation,
                             app.settings.display.vsync ? "on" : "off", app.settings.display.fps_limit, game.Floor().CurrentFloorName(),
-                            ui_ready && ui.MenuOpen() ? ", menu open" : "");
+                            ui_ready && ui.MenuOpen() ? ", menu open" : "", app.scene.Stats().ev, app.scene.Stats().exposure,
+                            app.scene.Stats().luminance, app.scene.Stats().draws, app.scene.Stats().lights);
                 status_start = status_now;
                 status_frames = 0;
                 status_gpu = 0.0;
