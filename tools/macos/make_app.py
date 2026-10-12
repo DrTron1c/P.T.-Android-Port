@@ -117,7 +117,7 @@ def main():
         shutil.copytree(build / "texture-tools", resources / "texture-tools")
     if (build / "licenses").is_dir():
         shutil.copytree(build / "licenses", resources / "licenses")
-    shutil.copy2(REPO / "README.md", resources / "README.md")
+    shutil.copy2(REPO / "docs" / "pc-port.md", resources / "README.md")
     shutil.copy2(REPO / "docs" / "macos.md", resources / "macOS.md")
     # the app icon: the PS4 game's icon0 (assets/pt.icns, as assets/pt.ico on Windows)
     shutil.copy2(REPO / "assets" / "pt.icns", resources / "pt.icns")

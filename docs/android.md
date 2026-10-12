@@ -1,8 +1,9 @@
-# Android
+# P.T. Android Port: notes
 
-An arm64 Android app of the port, built from this repository. It is the same game, a Vulkan 1.3 renderer on SDL3, with touch
-controls added. **It has not been run on a device yet when this was written** (the first build was written without an Android
-toolchain at hand); what has been tried is listed under "Status" below.
+The long notes of the Android app (the short ones are in the [README](../README.md)). It is an arm64 Android app built from this
+repository: the [P.T. PC port](pc-port.md)'s game and Vulkan 1.3 renderer on SDL3, with touch controls, a settings panel, an in-app
+updater and a main menu made for Android. Built by CI and tried by hand on one device, a Snapdragon 8 Gen 2
+(Adreno 740); what has and has not been tried is under "Status" below.
 
 ## What you need
 
@@ -124,8 +125,9 @@ How a platform piece differs from the Windows and Linux ones:
 
 The exposure meter, the picture that stayed black. In the first Android logs the exposure sat at its darkest (EV -10, 0.00019) in a lit
 room, the picture black around the glowing lamp, and the meter's reading did not follow the exposure: about 0.3 at 0.007 and at
-0.00019 alike, over a few percent of the pixels (a hallway view should count nearly all of them). The cause is not found yet. What
-the code does now: pixels with a NaN or an infinity are left out by their bits and counted; a light's or a probe's NaN is left out
+0.00019 alike, over a few percent of the pixels (a hallway view should count nearly all of them). The cause was the Adreno 740's compute
+shaders (see the full screen draws under "Speed and picture size"); the compute meter stays as `PT_METER_DRAW=0`. What
+the compute meter's code does: pixels with a NaN or an infinity are left out by their bits and counted; a light's or a probe's NaN is left out
 of the pixel instead of turning it black (`light_main.glsl`, `probe_main.glsl`, `probe_resolve.frag`); when more lit pixels are left
 out than counted, the EV stays where it is. pt.log has three `exposure ...` lines every two seconds (the reading, the exposure it was
 taken at and the EV it aims for; the counts of pixels without depth, non-finite, over 60000, black and valid, with the albedo's mean
@@ -184,8 +186,8 @@ The desktop settings are far too heavy for a tablet GPU at the tablet's own reso
   Upscaler method (`PT_BUILTIN_METHOD`) picks Draw (the default: two full screen draws into colour attachments) or Compute (the first
   version: on the tablet's Adreno 740 every compute work group ran, but only the top 128 rows of the picture it wrote arrived, so most of
   the screen was black; the engine's own luminance compute shader gave garbage on it too). It draws the scene at a fraction of the picture size (Quality is 2/3 of each side, Performance
-  1/2), jittered, and rebuilds the full size picture from the last frames. It is off by default, the presets do not touch it, and it
-  is untested on the tablet: the first builds that have it are the first run of its shader on an Adreno. The game's own settings page
+  1/2), jittered, and rebuilds the full size picture from the last frames. It is off by default and the presets do not touch it. The compute version failed on the
+  tablet (above); the Draw version, the default, is the one still to be confirmed there. The game's own settings page
   (pause menu, PC settings) has the same Upscaler, Quality and Sharpness rows. If the picture goes wrong with it on, set Upscaler to Off.
   Settings > Upscaler > Upscaler test view (not kept in `pt.ini`; `PT_BUILTIN_VIEW` does the same at start) replaces the upscaled picture
   with one thing the shader reads: 1 Gradient (a pattern made from the pixel position alone), 2 Game picture (the render image as it
@@ -234,11 +236,17 @@ com.ptport.android cat files/pt-runtime/data/pt.log`; the APK is debuggable) and
 
 ## Status
 
-- Written without an NDK in reach; the first builds were compiled by CI only. The touch code and the Android branches were
-  syntax-checked on a desktop compiler.
-- The updater is written from the Android documentation and not tried on a device: the confirmation page of the installer on
-  HyperOS, a silent update (Android 12 and newer allow it only for an app that installed itself), the "Install unknown apps" flow.
+- **Tried on one device**, a Snapdragon 8 Gen 2 (Adreno 740): the app installs, imports the game, shows the menu and runs the game.
+  Other chips (Mali, Immortalis, Tensor, older or newer Snapdragons) are untried.
+- Written without an NDK in reach: CI is the compiler of the Android code, and the touch code and the Android branches were
+  syntax-checked on a desktop compiler. Java is reviewed by eye and compiled by CI.
+- **Adreno 740 compute shaders** gave half-written output (the dark picture, the black upscaler). The meter, the reflection colour and the
+  upscaler are full screen draws since build 27; the report that they fix it on the device is still to come. If the picture is dark, the
+  `exposure` lines of the log are what to send.
+- Not confirmed yet on a device: the main menu of build 28 (look, flicker, text sizes, icon), the HUD picture of build 29 (drawing, hit areas,
+  the stick's travel), the menu's sound (levels, how often the creaks and footsteps come), the automatic picture size and the frame counter.
+- The updater is written from the Android documentation and not tried on every phone: the confirmation page of the installer on other
+  makers' systems, a silent update (Android 12 and newer allow it only for an app that installed itself), the "Install unknown apps" flow.
 - The PKG import is tested on synthetic packages only, not on a real fPKG of P.T. or on a phone (speed, the storage provider's
   file descriptor).
-- Not tried on a device: Vulkan start-up on a phone or tablet GPU, the importer on a real storage provider, frame rate, the touch
-  layout on different screen shapes.
+- No whole playthrough on Android has been reported yet; the desktop's scripted walkthrough (`tools/walkthrough.py`) does not run on a phone.

@@ -1,0 +1,50 @@
+name: Android bug report
+description: Something in the Android app does not work or differs from the PS4 original. The report from the app's Log screen is required.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Issues without the app's report are closed. This form is for the **Android app**; problems with the Windows, Linux or macOS
+        versions belong with the [desktop port](https://github.com/LoreanXavier/pt-pc).
+
+        **Where is the report?** In the app: main menu > **Log** > **Copy** or **Share** (paste it into the box below). After a crash,
+        a kill for memory or a hang, the menu shows a crash report when it comes back: use its Copy or Share. Do not post game files.
+  - type: input
+    id: build
+    attributes:
+      label: Build number
+      description: Shown at the bottom right of the main menu ("build N"), and in the report's first lines.
+      placeholder: "29"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device, chip and Android version
+      description: Also say if the screen is a tablet, a foldable or a phone.
+      placeholder: "Snapdragon 8 Gen 2 (Adreno 740), Android 14"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: For a visual difference from the PS4, a screenshot or a screen recording helps the most.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen
+      description: Where you are in the game and what you do. "Every time" or "once" matters. The settings you changed (preset, picture size, upscaler) matter too.
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Report from Log > Copy / Share
+      description: Paste it here (it can be long). Required.
+      render: text
+    validations:
+      required: true

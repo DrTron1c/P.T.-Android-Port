@@ -178,7 +178,7 @@ def main():
         shutil.copy2(dll, root / dll.name)
     if (build / "licenses").is_dir():
         shutil.copytree(build / "licenses", root / "licenses")
-    shutil.copy2(REPO / "README.md", root / "README.md")
+    shutil.copy2(REPO / "docs" / "pc-port.md", root / "README.md")
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
         for path in sorted(root.rglob("*")):
             if path.is_file():
