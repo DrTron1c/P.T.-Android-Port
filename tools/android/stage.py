@@ -3,6 +3,8 @@
 
 Puts into android/app/src/main:
   jniLibs/<abi>/libmain.so, libSDL3.so   the game and SDL, built by CMake
+  jniLibs/<abi>/libmain_hook.so, libhook_impl.so
+                                         adrenotools' hook libraries, which the custom GPU driver support loads by path
   java/org/libsdl/app/*.java             SDL's activity, taken from the SDL source CMake fetched (it must match libSDL3.so)
   assets/shaders, assets/fonts, assets/touch
                                          what the game reads at run time next to its executable on the desktop (touch: the on-screen
@@ -50,6 +52,12 @@ def main() -> int:
     jni.mkdir(parents=True)
     shutil.copy2(main_lib, jni / "libmain.so")
     shutil.copy2(sdl_libs[0], jni / "libSDL3.so")
+    for name in ("libmain_hook.so", "libhook_impl.so"):
+        hook = next(iter(sorted(build.rglob(name))), None)
+        if hook is None:
+            print(f"stage: {name} not found under {build} (build the 'main_hook' and 'hook_impl' targets)", file=sys.stderr)
+            return 1
+        shutil.copy2(hook, jni / name)
 
     sdl_java = next(iter(sorted(build.rglob("android-project/app/src/main/java/org/libsdl/app"))), None)
     if sdl_java is None or not sdl_java.is_dir():

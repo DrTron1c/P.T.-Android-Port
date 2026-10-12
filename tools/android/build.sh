@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the Android app (docs/android.md):  tools/android/build.sh native | apk | all
-#   native: the game and SDL for arm64 with the NDK, then stages libraries, shaders and fonts into android/app
+#   native: the game, SDL and adrenotools' hook libraries for arm64 with the NDK, then stages libraries, shaders and fonts into android/app
 #   apk:    Gradle packs the staged files into dist/P.T.PC.Port-Android-arm64.apk
 # Needs the Android NDK (ANDROID_NDK_HOME), CMake 3.28+, Ninja, Python 3; the apk step also JDK 17 and Gradle 8.7+.
 set -euo pipefail
@@ -22,7 +22,7 @@ native() {
     -DANDROID_STL=c++_static \
     -DPT_VERSION_OVERRIDE="$(tr -d '[:space:]' < android/version.txt)"
   # -k 0: every error of a build in one go (the CI log is read after the run, not during it)
-  cmake --build "$BUILD" --target pt pt_shaders --parallel -- -k 0
+  cmake --build "$BUILD" --target pt pt_shaders main_hook hook_impl --parallel -- -k 0
   python3 tools/android/stage.py --build "$BUILD"
 }
 

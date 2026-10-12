@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <string>
 
 #include "engine/platform/settings.h"
 
@@ -24,5 +25,15 @@ bool PrepareRuntime();
 //   - whenever the tools screen asked for a preset (data_dir/android-quality.txt: low, medium or original), which is consumed.
 // After that the settings are the player's own, changed on the game's PC settings page. True when settings were changed.
 bool ApplyDeviceDefaults(AppSettings& settings, const std::filesystem::path& data_dir);
+
+// A custom Vulkan driver the person installed in the main menu's Settings (GpuDriver.java) instead of the phone's own, opened through
+// libadrenotools (Android only; docs/android.md). Returns the driver's vkGetInstanceProcAddr, or null (the reason in `error`, empty when
+// none is installed) to use the system driver. The driver is on trial from here until EndGpuDriverTrial(): if the app dies in between,
+// the next start drops the driver so it cannot trap the person in a crash loop.
+void* OpenCustomGpuDriver(std::string& error);
+bool CustomGpuDriverActive();
+// Closes the driver (the one that would not create an instance) so the system driver can be loaded instead.
+void CloseCustomGpuDriver();
+void EndGpuDriverTrial();
 
 }

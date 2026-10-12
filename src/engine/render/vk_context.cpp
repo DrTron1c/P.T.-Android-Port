@@ -27,6 +27,9 @@
 #include "engine/core/crash_report.h"
 #include "engine/core/log.h"
 #include "engine/platform/os.h"
+#ifdef __ANDROID__
+#include "engine/platform/android_platform.h"
+#endif
 #include "engine/render/hdr_output.h"
 #include "engine/render/pipeline_cache_store.h"
 
@@ -172,8 +175,19 @@ bool Context::Init(SDL_Window* window, bool validation, bool want_hdr) {
         // Streamline's interposer (upscale/streamline.h): its proxies create the instance, the device and the swapchain
         /* With Streamline loaded, instance, device and swapchain must come from its proxies, so volk takes the interposer's loader instead of vulkan-1.dll. */
         volkInitializeCustom(loader);
-    } else if (!Check(volkInitialize(), "volkInitialize")) {
-        return false;
+    } else {
+#ifdef __ANDROID__
+        /* A custom GPU driver the person installed (docs/android.md) backs volk instead of the system libvulkan.so */
+        std::string driver_error;
+        if (void* get_proc = android::OpenCustomGpuDriver(driver_error)) {
+            volkInitializeCustom(reinterpret_cast<PFN_vkGetInstanceProcAddr>(get_proc));
+        } else {
+            if (!driver_error.empty()) LogWarn("vulkan: custom GPU driver unavailable ({}); using the phone's own", driver_error);
+            if (!Check(volkInitialize(), "volkInitialize")) return false;
+        }
+#else
+        if (!Check(volkInitialize(), "volkInitialize")) return false;
+#endif
     }
     std::vector<const char*> extensions;
     if (window) {
@@ -226,7 +240,14 @@ bool Context::Init(SDL_Window* window, bool validation, bool want_hdr) {
     export_device_info.pNext = instance_info.pNext;
     instance_info.pNext = &export_device_info;
 #endif
-    const VkResult instance_result = creator ? creator->CreateInstance(instance_info, instance) : vkCreateInstance(&instance_info, nullptr, &instance);
+    VkResult instance_result = creator ? creator->CreateInstance(instance_info, instance) : vkCreateInstance(&instance_info, nullptr, &instance);
+#ifdef __ANDROID__
+    if (instance_result != VK_SUCCESS && android::CustomGpuDriverActive()) {
+        LogWarn("vulkan: the custom GPU driver would not create an instance (VkResult {}); using the phone's own", static_cast<int>(instance_result));
+        android::CloseCustomGpuDriver();
+        if (Check(volkInitialize(), "volkInitialize")) instance_result = vkCreateInstance(&instance_info, nullptr, &instance);
+    }
+#endif
     if (!Check(instance_result, "vkCreateInstance")) {
         return false;
     }
@@ -262,6 +283,26 @@ bool Context::Init(SDL_Window* window, bool validation, bool want_hdr) {
                 const Win32SurfaceCreateInfo info{static_cast<VkStructureType>(1000009000), nullptr, 0, hinstance, hwnd};
                 created = create(instance, &info, nullptr, &surface) == VK_SUCCESS;
                 LogInfo("vulkan: surface through the Streamline interposer{}", created ? "" : " failed, SDL's instead");
+            }
+        }
+#endif
+#ifdef __ANDROID__
+        /* SDL makes the surface through the system libvulkan.so, whose instance is not the custom driver's: with a custom
+           driver the surface comes from the driver's own vkCreateAndroidSurfaceKHR. */
+        if (android::CustomGpuDriverActive()) {
+            struct AndroidSurfaceCreateInfo {
+                VkStructureType sType;
+                const void* pNext;
+                VkFlags flags;
+                void* window;
+            };
+            using CreateAndroidSurface = VkResult(VKAPI_PTR*)(VkInstance, const AndroidSurfaceCreateInfo*, const VkAllocationCallbacks*, VkSurfaceKHR*);
+            void* native_window = SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, nullptr);
+            const auto create = reinterpret_cast<CreateAndroidSurface>(vkGetInstanceProcAddr(instance, "vkCreateAndroidSurfaceKHR"));
+            if (native_window && create) {
+                const AndroidSurfaceCreateInfo info{static_cast<VkStructureType>(1000008000), nullptr, 0, native_window};
+                created = create(instance, &info, nullptr, &surface) == VK_SUCCESS;
+                if (!created) LogWarn("vulkan: the custom GPU driver would not make the window's surface; SDL's instead");
             }
         }
 #endif
@@ -545,6 +586,9 @@ bool Context::Init(SDL_Window* window, bool validation, bool want_hdr) {
     if (hooks) {
         hooks->DeviceCreated(*this);
     }
+#ifdef __ANDROID__
+    android::EndGpuDriverTrial();
+#endif
     return true;
 }
 

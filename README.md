@@ -185,6 +185,8 @@ this project's, and it will be taken out on request.
   behaves.
 - SDL3, Vulkan (volk, VMA), glm, Dear ImGui, stb, Lua 5.1, libogg and libvorbis, as in the desktop port; LibOrbisPkg (Maxton) for the
   PKG format the Java importer follows.
+- libadrenotools and liblinkernsbypass (Billy Laws, BSD 2-Clause; the notice is `android/app/src/main/java/com/ptport/android/LICENSE-libadrenotools.txt`)
+  for the custom GPU driver.
 - Share Tech and Share Tech Mono (The Share Tech Project Authors), SIL Open Font License 1.1 (the licences are in `android/app/src/main/res/raw`).
 - The menu's music and sounds are generated from noise and sine waves by `tools/android/menu_sounds.py`; nothing in them is sampled
   from a recording.

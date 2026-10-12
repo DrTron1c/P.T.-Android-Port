@@ -30,6 +30,9 @@ import java.util.Map;
  * about twice a second while it runs, applies each line as a tap on the same row of its own settings page would, and writes pt.ini.
  * Without a running game the file waits for the next start. The picture size, the frame rate hint, the frame counter, the
  * automatic picture size and the menu sound are the app's own (PTActivity, AppPrefs).
+ *
+ * On an Adreno phone the main menu's Settings (which passes a picker to setDriverPicker) also has the custom GPU driver (GpuDriver); the
+ * game takes it when it starts.
  */
 final class SettingsPanel {
     private static final String PICTURE = "picture";
@@ -95,6 +98,8 @@ final class SettingsPanel {
     private final Typeface mono;
     private final List<Setting> settings = new ArrayList<Setting>();
     private final Map<String, Integer> values = new LinkedHashMap<String, Integer>();
+    private Runnable pickDriver;
+    private TextView driverStatus;
 
     SettingsPanel(Context context) {
         this.context = context;
@@ -460,6 +465,51 @@ final class SettingsPanel {
         throw new IllegalArgumentException(key);
     }
 
+    /** Shows the custom GPU driver section (Adreno only) in createContent; the host opens its file picker when `pick` runs. */
+    void setDriverPicker(Runnable pick) {
+        pickDriver = pick;
+    }
+
+    /** Shows which driver is installed; the host calls it after the install. */
+    void showDriver() {
+        if (driverStatus == null) return;
+        String name = GpuDriver.name(context);
+        driverStatus.setText(name == null ? "In use: the phone's own driver" : "In use: " + name);
+    }
+
+    private void driverSection(LinearLayout column) {
+        heading(column, "GPU driver");
+        TextView note = label("Installs a custom Vulkan driver from a .zip (for example a Turnip build; Adreno GPUs only). The game takes it the next "
+                + "time it starts. If the game fails to start with it, the next start goes back to the phone's own driver.", 11, MenuStyle.DIM, mono, 0.03f);
+        note.setPadding(0, dp(10), 0, 0);
+        column.addView(note);
+        driverStatus = label("", 16, MenuStyle.INK, font, 0.08f);
+        driverStatus.setPadding(0, dp(14), 0, 0);
+        column.addView(driverStatus);
+        LinearLayout row = buttonRow(dp(42));
+        Button install = choiceButton("Install a driver (.zip)");
+        paint(install, false);
+        install.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                pickDriver.run();
+            }
+        });
+        row.addView(install, weighted());
+        Button remove = choiceButton("Use the phone's driver");
+        paint(remove, false);
+        remove.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                GpuDriver.deleteRecursively(GpuDriver.dir(context));
+                showDriver();
+            }
+        });
+        row.addView(remove, weighted());
+        column.addView(row);
+        showDriver();
+    }
+
     /** The settings' rows in a column; the host puts it in a scroll view. */
     View createContent() {
         LinearLayout column = new LinearLayout(context);
@@ -513,6 +563,7 @@ final class SettingsPanel {
         settingRow(column, find("lens_ghosts"));
         settingRow(column, find("film_grain"));
         settingRow(column, find("clarity"));
+        if (pickDriver != null && GpuDriver.supported()) driverSection(column);
         heading(column, "Main menu");
         settingRow(column, find(MENU_SOUND));
         TextView end = label("Changes act at once in a running game and are kept. The picture size also changes at once; if the picture "
