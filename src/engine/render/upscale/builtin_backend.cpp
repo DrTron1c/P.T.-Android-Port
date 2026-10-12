@@ -26,16 +26,33 @@ constexpr uint32_t kRing = 12;
 constexpr float kRestWeightUpscaling = 0.10f;
 constexpr float kRestWeightNative = 0.12f;
 
+// Test views (the Android settings panel's Upscaler test view, PT_BUILTIN_VIEW at start): 0 none; 1 a pattern made from the pixel
+// position alone; 2 the render image; 3 motion; 4 depth; 5 the history; 6 the reactive mask (all written by the shader straight to
+// the output); 7 the output cleared to a colour with no shader; 8 no output at all, so the engine shows the render image through
+// its own resolve pass (the picture the other upscalers' fallback gives)
+constexpr int kLastView = 8;
 std::atomic<int> g_view{-1};
+// where the shader writes: 0 the engine's output image itself, 1 an image of its own that is then copied into it
+std::atomic<int> g_path{-1};
 
 int TestView() {
     int view = g_view.load();
     if (view < 0) {
         const char* env = std::getenv("PT_BUILTIN_VIEW");
-        view = env ? std::clamp(std::atoi(env), 0, 6) : 0;
+        view = env ? std::clamp(std::atoi(env), 0, kLastView) : 0;
         g_view.store(view);
     }
     return view;
+}
+
+int OutputPath() {
+    int path = g_path.load();
+    if (path < 0) {
+        const char* env = std::getenv("PT_BUILTIN_PATH");
+        path = env ? std::clamp(std::atoi(env), 0, 1) : 0;
+        g_path.store(path);
+    }
+    return path;
 }
 
 struct Push {
@@ -85,6 +102,16 @@ public:
                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
                              VK_IMAGE_LAYOUT_GENERAL);
         }
+        // the image of the copy output path (OutputPath): written by the shader, copied into the engine's output
+        if (!ctx_.CreateImage(scratch_, kHistoryFormat, size, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, 1, 1,
+                              VK_IMAGE_ASPECT_COLOR_BIT)) {
+            LogError("upscale: built-in output image {}x{} could not be created", size.width, size.height);
+            Release();
+            return false;
+        }
+        vk::ImageBarrier(cmd, scratch_.image, VK_IMAGE_ASPECT_COLOR_BIT, VK_PIPELINE_STAGE_2_NONE, 0, VK_IMAGE_LAYOUT_UNDEFINED,
+                         VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
+                         VK_IMAGE_LAYOUT_GENERAL);
         write_ = 0;
         next_set_ = 0;
         frames_ = 0;
@@ -104,6 +131,8 @@ public:
         }
         const uint32_t read = write_ ^ 1u;
         const int view = TestView();
+        const bool copy = OutputPath() != 0 && scratch_.image;
+        VkImageView output_view = copy ? scratch_.view : d.output.view;
         const bool sharpen = d.sharpness > 0.001f && view == 0;
         const bool upscaling = d.render.width < d.display.width || d.render.height < d.display.height;
 
@@ -133,18 +162,42 @@ public:
         // nobody has tried is read from this and the status lines)
         if (frames_ < 3 || frames_ % 600 == 0) {
             LogInfo("upscale: built-in dispatch {}: render {}x{} display {}x{} output {}x{} jitter {:.3f} {:.3f} exposure {:.6f} reset {} view {} "
-                    "sharpness {:.2f} layouts color {} depth {} motion {} reactive {}",
+                    "path {} sharpness {:.2f} layouts color {} depth {} motion {} reactive {} output {}",
                     frames_, d.render.width, d.render.height, d.display.width, d.display.height, d.output.extent.width, d.output.extent.height,
-                    d.jitter.x, d.jitter.y, push.a[2], push.b[1] > 0.5 ? 1 : 0, view, d.sharpness, static_cast<int>(d.color.layout),
-                    static_cast<int>(d.depth.layout), static_cast<int>(d.motion.layout), static_cast<int>(d.reactive.layout));
+                    d.jitter.x, d.jitter.y, push.a[2], push.b[1] > 0.5 ? 1 : 0, view, copy ? 1 : 0, d.sharpness,
+                    static_cast<int>(d.color.layout), static_cast<int>(d.depth.layout), static_cast<int>(d.motion.layout),
+                    static_cast<int>(d.reactive.layout), static_cast<int>(d.output.layout));
         }
         ++frames_;
+        if (view == 8) {
+            // no upscaled picture: the engine's resolve pass shows the render image itself, stretched (a test of everything after
+            // this pass, and of the render passes, with none of this backend's work)
+            return false;
+        }
+        if (view == 7) {
+            // the output cleared to orange by the transfer queue's clear, no shader: whether the picture can be written to and read
+            // back whole
+            VkClearColorValue orange{};
+            orange.float32[0] = 0.5f;
+            orange.float32[1] = 0.2f;
+            orange.float32[2] = 0.0f;
+            orange.float32[3] = 1.0f;
+            const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            vkCmdClearColorImage(d.cmd, d.output.image, VK_IMAGE_LAYOUT_GENERAL, &orange, 1, &range);
+            VkMemoryBarrier2 cleared{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+            cleared.srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
+            cleared.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+            cleared.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+            cleared.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+            Barrier(d.cmd, cleared);
+            return true;
+        }
         vkCmdBindPipeline(d.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_);
         const uint32_t groups_x = (d.display.width + 7) / 8;
         const uint32_t groups_y = (d.display.height + 7) / 8;
 
         VkDescriptorSet set = NextSet();
-        WriteSet(set, d, history_[read], history_[write_]);
+        WriteSet(set, d, history_[read], history_[write_], output_view);
         vkCmdBindDescriptorSets(d.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, layout_, 0, 1, &set, 0, nullptr);
         vkCmdPushConstants(d.cmd, layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
         vkCmdDispatch(d.cmd, groups_x, groups_y, 1);
@@ -159,7 +212,7 @@ public:
             Barrier(d.cmd, pass_barrier);
             push.b[2] = 1.0f;
             VkDescriptorSet sharpen_set = NextSet();
-            WriteSet(sharpen_set, d, history_[write_], history_[write_]);
+            WriteSet(sharpen_set, d, history_[write_], history_[write_], output_view);
             vkCmdBindDescriptorSets(d.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, layout_, 0, 1, &sharpen_set, 0, nullptr);
             vkCmdPushConstants(d.cmd, layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
             vkCmdDispatch(d.cmd, groups_x, groups_y, 1);
@@ -172,6 +225,19 @@ public:
         done.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
         done.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
         Barrier(d.cmd, done);
+        if (copy) {
+            VkImageCopy region{};
+            region.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+            region.dstSubresource = region.srcSubresource;
+            region.extent = {d.display.width, d.display.height, 1};
+            vkCmdCopyImage(d.cmd, scratch_.image, VK_IMAGE_LAYOUT_GENERAL, d.output.image, VK_IMAGE_LAYOUT_GENERAL, 1, &region);
+            VkMemoryBarrier2 copied{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+            copied.srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
+            copied.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+            copied.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+            copied.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+            Barrier(d.cmd, copied);
+        }
 
         write_ = read;
         last_exposure_ = push.a[2];
@@ -188,6 +254,10 @@ public:
             }
             image = vk::Image{};
         }
+        if (scratch_.image) {
+            ctx_.DestroyImage(scratch_);
+        }
+        scratch_ = vk::Image{};
         last_exposure_ = 0.0f;
     }
 
@@ -311,7 +381,7 @@ private:
     }
 
     // binding 4 samples `history`, binding 5 writes `history_out`, binding 6 writes the engine's output image
-    void WriteSet(VkDescriptorSet set, const UpscaleDispatch& d, const vk::Image& history, const vk::Image& history_out) {
+    void WriteSet(VkDescriptorSet set, const UpscaleDispatch& d, const vk::Image& history, const vk::Image& history_out, VkImageView output) {
         auto layout_of = [](const UpscaleImage& image) {
             return image.layout == VK_IMAGE_LAYOUT_UNDEFINED ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : image.layout;
         };
@@ -322,7 +392,7 @@ private:
         images[3] = {nearest_, d.reactive.view, layout_of(d.reactive)};
         images[4] = {linear_, history.view, VK_IMAGE_LAYOUT_GENERAL};
         images[5] = {VK_NULL_HANDLE, history_out.view, VK_IMAGE_LAYOUT_GENERAL};
-        images[6] = {VK_NULL_HANDLE, d.output.view, VK_IMAGE_LAYOUT_GENERAL};
+        images[6] = {VK_NULL_HANDLE, output, VK_IMAGE_LAYOUT_GENERAL};
         VkWriteDescriptorSet writes[7]{};
         for (uint32_t i = 0; i < 7; ++i) {
             writes[i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -345,6 +415,8 @@ private:
     std::array<VkDescriptorSet, kRing> sets_{};
     uint32_t next_set_ = 0;
     vk::Image history_[2];
+    // the output path 1 image (see OutputPath)
+    vk::Image scratch_;
     // the history image this frame writes; the other one holds last frame's result
     uint32_t write_ = 0;
     VkExtent2D render_{};
@@ -357,7 +429,11 @@ private:
 }
 
 void SetBuiltinUpscalerView(int view) {
-    g_view.store(std::clamp(view, 0, 6));
+    g_view.store(std::clamp(view, 0, kLastView));
+}
+
+void SetBuiltinUpscalerPath(int path) {
+    g_path.store(std::clamp(path, 0, 1));
 }
 
 std::unique_ptr<UpscaleBackend> CreateBuiltinBackend(vk::Context& ctx) {

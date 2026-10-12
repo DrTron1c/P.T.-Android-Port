@@ -125,7 +125,11 @@ final class SettingsPanel {
                 new String[] { "Off", "20%", "40%", "60%", "80%", "100%" }, new int[] { 0, 2, 4, 6, 8, 10 }));
         settings.add(new Setting("upscale_debug", "Upscaler test view",
                 "Only for finding a fault: shows one stage of the Built-in upscaler instead of the game. Gradient is a pattern that does not depend on the game; leave it Off to play.",
-                new String[] { "Off", "Gradient", "Game picture", "Motion", "Depth", "History", "Reactive" }, new int[] { 0, 1, 2, 3, 4, 5, 6 }));
+                new String[] { "Off", "Gradient", "Game", "Motion", "Depth", "History", "Reactive", "Clear", "Engine" },
+                new int[] { 0, 1, 2, 3, 4, 5, 6, 7, 8 }));
+        settings.add(new Setting("upscale_path", "Upscaler output",
+                "Only for finding a fault: where the Built-in upscaler writes its picture. Direct is normal; Copy writes to an image of its own and copies it over.",
+                new String[] { "Direct", "Copy" }, new int[] { 0, 1 }));
         settings.add(new Setting(FPS, "Frame rate",
                 "The most frames a second the game draws. A steady lower rate looks smoother than a rate that rises and falls; the screen is asked to match it.",
                 new String[] { "No limit", "30", "40", "45", "60", "90", "120" }, new int[] { 0, 30, 40, 45, 60, 90, 120 }));
@@ -250,6 +254,7 @@ final class SettingsPanel {
         values.put("upscale_quality", q.equals("native") ? 0 : q.equals("balanced") ? 2 : q.equals("performance") ? 3 : q.equals("ultra_performance") ? 4 : 1);
         values.put("upscale_sharpness", clamp(Math.round(decimal(ini, "upscaling.sharpness", 0.0f) * 10.0f), 0, 10));
         values.put("upscale_debug", 0);
+        values.put("upscale_path", 0);
         values.put("vsync", flag(ini, "display.vsync", true));
         values.put("shadows", clamp(number(ini, "graphics.shadow_quality", fresh ? 1 : 3), 0, 3));
         values.put("ambient_occlusion", flag(ini, "graphics.ambient_occlusion", !fresh));
@@ -481,6 +486,7 @@ final class SettingsPanel {
         settingRow(column, find("upscale_quality"));
         settingRow(column, find("upscale_sharpness"));
         settingRow(column, find("upscale_debug"));
+        settingRow(column, find("upscale_path"));
         heading(column, "Lighting");
         settingRow(column, find("shadows"));
         settingRow(column, find("ambient_occlusion"));

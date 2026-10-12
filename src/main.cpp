@@ -2756,8 +2756,13 @@ private:
             {"upscale_sharpness", kSharpness},
         };
         if (name == "upscale_debug") {
-            // a test picture of the Built-in upscaler (not kept in pt.ini): 0 off, 1 gradient, 2 game picture, 3 motion, 4 depth, 5 history, 6 reactive
-            pt::SetBuiltinUpscalerView(std::clamp(value, 0, 6));
+            // a test picture of the Built-in upscaler (not kept in pt.ini): 0 off, 1 gradient, 2 game picture, 3 motion, 4 depth, 5 history,
+            // 6 reactive, 7 cleared, 8 the engine's own resolve
+            pt::SetBuiltinUpscalerView(std::clamp(value, 0, 8));
+            return true;
+        }
+        if (name == "upscale_path") {
+            pt::SetBuiltinUpscalerPath(std::clamp(value, 0, 1));
             return true;
         }
         if (name == "fps_limit") {

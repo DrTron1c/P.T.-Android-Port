@@ -214,10 +214,20 @@ void DebugView(ivec2 px) {
     int mode = int(pc.b.w + 0.5);
     vec3 c = vec3(0.0);
     if (mode == 1) {
-        // a pattern from the pixel position alone: red grows to the right, green downward, a checker of 64 pixel squares
-        c = vec3(uv.x, uv.y, 0.25) * 0.5;
-        if (((px.x >> 6) + (px.y >> 6) & 1) == 0) {
+        // a pattern from the pixel position alone: a band of 64 rows in each of six colours (red, green, yellow, blue, magenta, cyan,
+        // then round again), every 64 pixel column alternately dim, a white line across every 256th row and a white frame around
+        // the display, so a photo of the screen shows how many rows and columns reach it and at what scale
+        int band = ((px.y >> 6) % 6) + 1;
+        c = vec3(float(band & 1), float((band >> 1) & 1), float((band >> 2) & 1)) * 0.5;
+        if (((px.x >> 6) & 1) == 0) {
             c *= 0.6;
+        }
+        if ((px.y & 255) < 3) {
+            c = vec3(0.5);
+        }
+        ivec2 size = ivec2(pc.sizes.zw);
+        if (px.x < 4 || px.y < 4 || px.x >= size.x - 4 || px.y >= size.y - 4) {
+            c = vec3(0.5);
         }
     } else if (mode == 2) {
         c = Sane(texelFetch(u_color, rp, 0).rgb);
