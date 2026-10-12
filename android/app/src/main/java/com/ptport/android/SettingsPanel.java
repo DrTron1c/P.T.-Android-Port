@@ -128,8 +128,8 @@ final class SettingsPanel {
                 new String[] { "Off", "Gradient", "Game", "Motion", "Depth", "History", "Reactive", "Clear", "Engine" },
                 new int[] { 0, 1, 2, 3, 4, 5, 6, 7, 8 }));
         settings.add(new Setting("upscale_path", "Upscaler output",
-                "Only for finding a fault: where the Built-in upscaler writes its picture. Direct is normal; Copy writes to an image of its own and copies it over.",
-                new String[] { "Direct", "Copy" }, new int[] { 0, 1 }));
+                "Only for finding a fault: where the Built-in upscaler writes its picture. Direct is normal; Copy writes to an image of its own and copies it over; Buffer writes to a buffer and copies that over.",
+                new String[] { "Direct", "Copy", "Buffer" }, new int[] { 0, 1, 2 }));
         settings.add(new Setting(FPS, "Frame rate",
                 "The most frames a second the game draws. A steady lower rate looks smoother than a rate that rises and falls; the screen is asked to match it.",
                 new String[] { "No limit", "30", "40", "45", "60", "90", "120" }, new int[] { 0, 30, 40, 45, 60, 90, 120 }));

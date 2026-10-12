@@ -2762,7 +2762,7 @@ private:
             return true;
         }
         if (name == "upscale_path") {
-            pt::SetBuiltinUpscalerPath(std::clamp(value, 0, 1));
+            pt::SetBuiltinUpscalerPath(std::clamp(value, 0, 2));
             return true;
         }
         if (name == "fps_limit") {

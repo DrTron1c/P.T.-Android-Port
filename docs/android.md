@@ -164,8 +164,9 @@ The desktop settings are far too heavy for a tablet GPU at the tablet's own reso
   with one thing the shader reads: 1 Gradient (a pattern made from the pixel position alone), 2 Game picture (the render image as it
   came out of the scene passes), 3 Motion, 4 Depth, 5 History, 6 Reactive, 7 Clear (the output cleared to orange by a transfer, no
   shader) and 8 Engine (no upscaled picture, so the engine's own resolve pass shows the render image stretched). Settings > Upscaler >
-  Upscaler output (`PT_BUILTIN_PATH`) writes the shader's picture either Direct to the engine's image or to an image of its own that is
-  copied over (Copy). Gradient is drawn in 64 row bands of six colours with a white frame at the display's edge. Gradient on the whole screen means the compute pass and
+  Upscaler output (`PT_BUILTIN_PATH`) writes the shader's picture either Direct to the engine's image, to an image of its own that is
+  copied over (Copy) or to a buffer that is copied over (Buffer). The first dispatches of a run log how many work groups ran and how
+  many in each 64th of the rows (`upscale: built-in groups`), and the device's compute limits. Gradient is drawn in 64 row bands of six colours with a white frame at the display's edge. Gradient on the whole screen means the compute pass and
   the output are fine and an input is wrong; a cropped gradient means the output or the passes after it are wrong. The dispatch's sizes,
   jitter, exposure and the inputs' image layouts are in `pt.log` (`upscale: built-in dispatch`) for the first frames of a run.
 - The frame counter (Settings > Frame counter: Off, Frame rate, Detailed): once a second the game sends the Android message `0x8002`

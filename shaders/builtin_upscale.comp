@@ -27,6 +27,18 @@ layout(set = 0, binding = 3) uniform sampler2D u_reactive;
 layout(set = 0, binding = 4) uniform sampler2D u_history;
 layout(set = 0, binding = 5, rgba16f) uniform writeonly image2D u_history_out;
 layout(set = 0, binding = 6, rgba16f) uniform writeonly image2D u_output;
+// what the groups that ran counted (the CPU reads it back): groups run, the furthest group row and column, groups per 64th of the rows
+layout(set = 0, binding = 7, std430) buffer Counters {
+    uint groups_run;
+    uint last_row;
+    uint last_column;
+    uint spare;
+    uint bands[64];
+} counters;
+// the picture as RGBA16F pixels, two words each, for the output path that copies a buffer into the engine's image
+layout(set = 0, binding = 8, std430) buffer OutputPixels {
+    uvec2 pixels[];
+} out_pixels;
 
 layout(push_constant) uniform Push {
     uvec4 sizes;  // render width, height, display width, height
@@ -35,6 +47,22 @@ layout(push_constant) uniform Push {
 } pc;
 
 const float kMaxValue = 60000.0;
+
+// pc.b.z is the pass (0 resolve, 1 sharpen), plus 2 when the picture goes to the buffer
+bool ToBuffer() {
+    return pc.b.z > 1.5;
+}
+int Pass() {
+    return pc.b.z > 2.5 || (pc.b.z > 0.5 && pc.b.z < 1.5) ? 1 : 0;
+}
+
+void StoreOutput(ivec2 px, vec4 colour) {
+    if (ToBuffer()) {
+        out_pixels.pixels[uint(px.y) * pc.sizes.z + uint(px.x)] = uvec2(packHalf2x16(colour.rg), packHalf2x16(colour.ba));
+    } else {
+        imageStore(u_output, px, colour);
+    }
+}
 
 bool Finite(float x) {
     // bit test: Adreno's compiler does not keep NaN semantics in float comparisons or isnan
@@ -179,7 +207,7 @@ void Resolve(ivec2 px) {
     }
 
     vec3 colour = min(Decompress(result), vec3(kMaxValue));
-    imageStore(u_output, px, vec4(colour, result_alpha));
+    StoreOutput(px, vec4(colour, result_alpha));
     imageStore(u_history_out, px, vec4(min(colour / exposure, vec3(kMaxValue)), result_alpha));
 }
 
@@ -200,7 +228,7 @@ void Sharpen(ivec2 px) {
     vec3 weight = amp * (-0.2 * clamp(pc.b.x, 0.0, 1.0));
     vec3 sharp = (c + (n + s + e + w) * weight) / (1.0 + 4.0 * weight);
     vec3 colour = min(Decompress(max(sharp, vec3(0.0))), vec3(kMaxValue));
-    imageStore(u_output, px, vec4(colour, centre.a));
+    StoreOutput(px, vec4(colour, centre.a));
 }
 
 // Test views for finding out why a picture goes wrong on a GPU nobody has tried (pc.b.w, the Android settings panel's Upscaler test
@@ -245,17 +273,25 @@ void DebugView(ivec2 px) {
     } else if (mode == 6) {
         c = vec3(texelFetch(u_reactive, rp, 0).x) * 0.5;
     }
-    imageStore(u_output, px, vec4(c, 1.0));
+    StoreOutput(px, vec4(c, 1.0));
 }
 
 void main() {
+    if (gl_LocalInvocationIndex == 0u) {
+        // one count for each work group that starts: whether the whole dispatch runs
+        atomicAdd(counters.groups_run, 1u);
+        atomicMax(counters.last_row, gl_WorkGroupID.y);
+        atomicMax(counters.last_column, gl_WorkGroupID.x);
+        uint rows = max((pc.sizes.w + 7u) / 8u, 1u);
+        atomicAdd(counters.bands[min(63u, gl_WorkGroupID.y * 64u / rows)], 1u);
+    }
     ivec2 px = ivec2(gl_GlobalInvocationID.xy);
     if (px.x >= int(pc.sizes.z) || px.y >= int(pc.sizes.w)) {
         return;
     }
     if (pc.b.w > 0.5) {
         DebugView(px);
-    } else if (pc.b.z < 0.5) {
+    } else if (Pass() == 0) {
         Resolve(px);
     } else {
         Sharpen(px);

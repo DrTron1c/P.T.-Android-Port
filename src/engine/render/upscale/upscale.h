@@ -235,8 +235,8 @@ std::unique_ptr<UpscaleBackend> CreateBuiltinBackend(vk::Context& ctx);
 // reactive mask, 7 the output cleared with no shader, 8 no upscaled picture at all): it writes that to the output instead of the
 // upscaled picture. The Android settings panel sets it (Upscaler test view), PT_BUILTIN_VIEW does at start.
 void SetBuiltinUpscalerView(int view);
-// Where the built-in upscaler's shader writes: 0 the engine's output image, 1 an image of its own copied into it afterwards
-// (the Android settings panel's Upscaler output; PT_BUILTIN_PATH at start).
+// Where the built-in upscaler's shader writes: 0 the engine's output image, 1 an image of its own copied into it afterwards, 2 a
+// buffer copied into it afterwards (the Android settings panel's Upscaler output; PT_BUILTIN_PATH at start).
 void SetBuiltinUpscalerPath(int path);
 std::unique_ptr<UpscaleBackend> CreateDlssBackend(vk::Context& ctx);
 // Apple MetalFX (metalfx_backend.mm, macOS only): the port's temporal upscaler on a Metal command buffer

@@ -32,7 +32,8 @@ constexpr float kRestWeightNative = 0.12f;
 // its own resolve pass (the picture the other upscalers' fallback gives)
 constexpr int kLastView = 8;
 std::atomic<int> g_view{-1};
-// where the shader writes: 0 the engine's output image itself, 1 an image of its own that is then copied into it
+// where the shader writes: 0 the engine's output image itself, 1 an image of its own that is then copied into it, 2 a buffer that
+// is then copied into it
 std::atomic<int> g_path{-1};
 
 int TestView() {
@@ -49,11 +50,32 @@ int OutputPath() {
     int path = g_path.load();
     if (path < 0) {
         const char* env = std::getenv("PT_BUILTIN_PATH");
-        path = env ? std::clamp(std::atoi(env), 0, 1) : 0;
+        path = env ? std::clamp(std::atoi(env), 0, 2) : 0;
         g_path.store(path);
     }
     return path;
 }
+
+// What the shader counts into a buffer of the CPU's (read back three dispatches later): the work groups that ran, the furthest row
+// and column of them and how many ran in each 64th of the rows, to see whether a GPU runs a whole dispatch
+constexpr uint32_t kBands = 64;
+struct Counters {
+    uint32_t groups_run;
+    uint32_t last_row;
+    uint32_t last_column;
+    uint32_t spare;
+    uint32_t bands[kBands];
+};
+constexpr uint32_t kCounterSlots = 3;
+
+struct CounterSlot {
+    vk::Buffer buffer;
+    uint32_t dispatch = 0;
+    uint32_t groups_x = 0;
+    uint32_t groups_y = 0;
+    // the groups the dispatch the slot holds asked for, 0 when it holds none
+    uint32_t expected = 0;
+};
 
 struct Push {
     uint32_t sizes[4];
@@ -112,10 +134,32 @@ public:
         vk::ImageBarrier(cmd, scratch_.image, VK_IMAGE_ASPECT_COLOR_BIT, VK_PIPELINE_STAGE_2_NONE, 0, VK_IMAGE_LAYOUT_UNDEFINED,
                          VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
                          VK_IMAGE_LAYOUT_GENERAL);
+        for (CounterSlot& slot : counters_) {
+            if (!ctx_.CreateBuffer(slot.buffer, sizeof(Counters), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true) || !slot.buffer.mapped) {
+                LogError("upscale: built-in counters could not be created");
+                Release();
+                return false;
+            }
+            std::memset(slot.buffer.mapped, 0, sizeof(Counters));
+            vmaFlushAllocation(ctx_.allocator, slot.buffer.allocation, 0, VK_WHOLE_SIZE);
+            slot.expected = 0;
+        }
+        // the buffer of the buffer output path (OutputPath 2): one RGBA16F pixel is two words
+        const VkDeviceSize buffer_bytes = VkDeviceSize(size.width) * size.height * 8;
+        if (!ctx_.CreateBuffer(out_buffer_, buffer_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, false)) {
+            // the shader still needs something bound there; the buffer path is not offered then
+            LogWarn("upscale: built-in output buffer of {} MB could not be created; the buffer path is off", buffer_bytes >> 20);
+            out_buffer_ = vk::Buffer{};
+        }
         write_ = 0;
         next_set_ = 0;
         frames_ = 0;
         last_exposure_ = 0.0f;
+        const VkPhysicalDeviceLimits& limits = ctx_.properties.limits;
+        LogInfo("upscale: compute limits: groups {} {} {}, group size {} {} {}, invocations {}, shared {} bytes, subgroup size control not used",
+                limits.maxComputeWorkGroupCount[0], limits.maxComputeWorkGroupCount[1], limits.maxComputeWorkGroupCount[2],
+                limits.maxComputeWorkGroupSize[0], limits.maxComputeWorkGroupSize[1], limits.maxComputeWorkGroupSize[2],
+                limits.maxComputeWorkGroupInvocations, limits.maxComputeSharedMemorySize);
         LogInfo("upscale: built-in temporal upscaler {}x{} -> {}x{}", render_.width, render_.height, display_.width, display_.height);
         return true;
     }
@@ -131,7 +175,9 @@ public:
         }
         const uint32_t read = write_ ^ 1u;
         const int view = TestView();
-        const bool copy = OutputPath() != 0 && scratch_.image;
+        const int path_wanted = OutputPath();
+        const bool copy = path_wanted == 1 && scratch_.image;
+        const bool buffered = path_wanted == 2 && out_buffer_.buffer;
         VkImageView output_view = copy ? scratch_.view : d.output.view;
         const bool sharpen = d.sharpness > 0.001f && view == 0;
         const bool upscaling = d.render.width < d.display.width || d.render.height < d.display.height;
@@ -155,7 +201,9 @@ public:
         push.a[3] = upscaling ? kRestWeightUpscaling : kRestWeightNative;
         push.b[0] = std::clamp(d.sharpness, 0.0f, 1.0f);
         push.b[1] = d.reset || last_exposure_ <= 0.0f ? 1.0f : 0.0f;
-        push.b[2] = 0.0f;
+        // pass 0 resolves, 1 sharpens; +2 when the picture goes to the buffer
+        const float to_buffer = buffered ? 2.0f : 0.0f;
+        push.b[2] = to_buffer;
         push.b[3] = static_cast<float>(view);
 
         // the first frames and then about every ten seconds: what this dispatch is given (a picture that goes wrong on a GPU
@@ -164,7 +212,7 @@ public:
             LogInfo("upscale: built-in dispatch {}: render {}x{} display {}x{} output {}x{} jitter {:.3f} {:.3f} exposure {:.6f} reset {} view {} "
                     "path {} sharpness {:.2f} layouts color {} depth {} motion {} reactive {} output {}",
                     frames_, d.render.width, d.render.height, d.display.width, d.display.height, d.output.extent.width, d.output.extent.height,
-                    d.jitter.x, d.jitter.y, push.a[2], push.b[1] > 0.5 ? 1 : 0, view, copy ? 1 : 0, d.sharpness,
+                    d.jitter.x, d.jitter.y, push.a[2], push.b[1] > 0.5 ? 1 : 0, view, copy ? 1 : buffered ? 2 : 0, d.sharpness,
                     static_cast<int>(d.color.layout), static_cast<int>(d.depth.layout), static_cast<int>(d.motion.layout),
                     static_cast<int>(d.reactive.layout), static_cast<int>(d.output.layout));
         }
@@ -196,8 +244,16 @@ public:
         const uint32_t groups_x = (d.display.width + 7) / 8;
         const uint32_t groups_y = (d.display.height + 7) / 8;
 
+        // the counters of this dispatch: the slot's last dispatch (three ago) is reported, then the slot is zeroed
+        CounterSlot& counter = counters_[(frames_ - 1) % kCounterSlots];
+        ReportCounters(counter);
+        counter.dispatch = frames_ - 1;
+        counter.groups_x = groups_x;
+        counter.groups_y = groups_y;
+        counter.expected = groups_x * groups_y * (sharpen ? 2u : 1u);
+
         VkDescriptorSet set = NextSet();
-        WriteSet(set, d, history_[read], history_[write_], output_view);
+        WriteSet(set, d, history_[read], history_[write_], output_view, counter.buffer.buffer);
         vkCmdBindDescriptorSets(d.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, layout_, 0, 1, &set, 0, nullptr);
         vkCmdPushConstants(d.cmd, layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
         vkCmdDispatch(d.cmd, groups_x, groups_y, 1);
@@ -210,9 +266,9 @@ public:
             pass_barrier.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
             pass_barrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
             Barrier(d.cmd, pass_barrier);
-            push.b[2] = 1.0f;
+            push.b[2] = 1.0f + to_buffer;
             VkDescriptorSet sharpen_set = NextSet();
-            WriteSet(sharpen_set, d, history_[write_], history_[write_], output_view);
+            WriteSet(sharpen_set, d, history_[write_], history_[write_], output_view, counter.buffer.buffer);
             vkCmdBindDescriptorSets(d.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, layout_, 0, 1, &sharpen_set, 0, nullptr);
             vkCmdPushConstants(d.cmd, layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
             vkCmdDispatch(d.cmd, groups_x, groups_y, 1);
@@ -231,6 +287,19 @@ public:
             region.dstSubresource = region.srcSubresource;
             region.extent = {d.display.width, d.display.height, 1};
             vkCmdCopyImage(d.cmd, scratch_.image, VK_IMAGE_LAYOUT_GENERAL, d.output.image, VK_IMAGE_LAYOUT_GENERAL, 1, &region);
+            VkMemoryBarrier2 copied{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+            copied.srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
+            copied.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+            copied.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+            copied.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+            Barrier(d.cmd, copied);
+        }
+
+        if (buffered) {
+            VkBufferImageCopy region{};
+            region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+            region.imageExtent = {d.display.width, d.display.height, 1};
+            vkCmdCopyBufferToImage(d.cmd, out_buffer_.buffer, d.output.image, VK_IMAGE_LAYOUT_GENERAL, 1, &region);
             VkMemoryBarrier2 copied{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
             copied.srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
             copied.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
@@ -258,6 +327,11 @@ public:
             ctx_.DestroyImage(scratch_);
         }
         scratch_ = vk::Image{};
+        for (CounterSlot& slot : counters_) {
+            ctx_.DestroyBuffer(slot.buffer);
+            slot = CounterSlot{};
+        }
+        ctx_.DestroyBuffer(out_buffer_);
         last_exposure_ = 0.0f;
     }
 
@@ -277,22 +351,26 @@ private:
         if (!device) {
             return false;
         }
-        VkDescriptorSetLayoutBinding bindings[7]{};
+        VkDescriptorSetLayoutBinding bindings[9]{};
         for (uint32_t i = 0; i < 5; ++i) {
             bindings[i] = {i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
         }
         bindings[5] = {5, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
         bindings[6] = {6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+        bindings[7] = {7, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+        bindings[8] = {8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
         VkDescriptorSetLayoutCreateInfo set_info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-        set_info.bindingCount = 7;
+        set_info.bindingCount = 9;
         set_info.pBindings = bindings;
         if (!vk::Check(vkCreateDescriptorSetLayout(device, &set_info, nullptr, &set_layout_), "built-in upscaler set layout")) {
             return false;
         }
-        const VkDescriptorPoolSize sizes[2] = {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 5 * kRing}, {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2 * kRing}};
+        const VkDescriptorPoolSize sizes[3] = {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 5 * kRing},
+                                               {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2 * kRing},
+                                               {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 * kRing}};
         VkDescriptorPoolCreateInfo pool_info{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
         pool_info.maxSets = kRing;
-        pool_info.poolSizeCount = 2;
+        pool_info.poolSizeCount = 3;
         pool_info.pPoolSizes = sizes;
         if (!vk::Check(vkCreateDescriptorPool(device, &pool_info, nullptr, &pool_), "built-in upscaler descriptor pool")) {
             DestroyPipeline();
@@ -381,7 +459,8 @@ private:
     }
 
     // binding 4 samples `history`, binding 5 writes `history_out`, binding 6 writes the engine's output image
-    void WriteSet(VkDescriptorSet set, const UpscaleDispatch& d, const vk::Image& history, const vk::Image& history_out, VkImageView output) {
+    void WriteSet(VkDescriptorSet set, const UpscaleDispatch& d, const vk::Image& history, const vk::Image& history_out, VkImageView output,
+                  VkBuffer counters) {
         auto layout_of = [](const UpscaleImage& image) {
             return image.layout == VK_IMAGE_LAYOUT_UNDEFINED ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : image.layout;
         };
@@ -402,7 +481,44 @@ private:
             writes[i].descriptorType = i < 5 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
             writes[i].pImageInfo = &images[i];
         }
-        vkUpdateDescriptorSets(ctx_.device, 7, writes, 0, nullptr);
+        // binding 7 the counters of this dispatch, 8 the buffer path's pixels (the counters stand in when there is none)
+        VkDescriptorBufferInfo buffers[2]{};
+        buffers[0] = {counters, 0, VK_WHOLE_SIZE};
+        buffers[1] = {out_buffer_.buffer ? out_buffer_.buffer : counters, 0, VK_WHOLE_SIZE};
+        for (uint32_t i = 0; i < 2; ++i) {
+            writes[7 + i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+            writes[7 + i].dstSet = set;
+            writes[7 + i].dstBinding = 7 + i;
+            writes[7 + i].descriptorCount = 1;
+            writes[7 + i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            writes[7 + i].pBufferInfo = &buffers[i];
+        }
+        vkUpdateDescriptorSets(ctx_.device, 9, writes, 0, nullptr);
+    }
+
+    // Logs what the shader counted in a dispatch of three ago (first few and every 600th) and zeroes the slot for the next one
+    void ReportCounters(CounterSlot& slot) {
+        if (!slot.buffer.mapped) {
+            return;
+        }
+        if (slot.expected > 0) {
+            vmaInvalidateAllocation(ctx_.allocator, slot.buffer.allocation, 0, VK_WHOLE_SIZE);
+            Counters seen;
+            std::memcpy(&seen, slot.buffer.mapped, sizeof(seen));
+            if (slot.dispatch < 3 || slot.dispatch % 600 == 0) {
+                LogInfo("upscale: built-in groups, dispatch {}: {} of {} ran, last row {} of {}, last column {} of {}", slot.dispatch, seen.groups_run,
+                        slot.expected, seen.last_row, slot.groups_y, seen.last_column, slot.groups_x);
+                for (uint32_t row = 0; row < kBands; row += 16) {
+                    LogInfo("upscale: built-in groups per 64th of the rows {:2}..{:2}: {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}", row, row + 15,
+                            seen.bands[row], seen.bands[row + 1], seen.bands[row + 2], seen.bands[row + 3], seen.bands[row + 4], seen.bands[row + 5],
+                            seen.bands[row + 6], seen.bands[row + 7], seen.bands[row + 8], seen.bands[row + 9], seen.bands[row + 10],
+                            seen.bands[row + 11], seen.bands[row + 12], seen.bands[row + 13], seen.bands[row + 14], seen.bands[row + 15]);
+                }
+            }
+        }
+        std::memset(slot.buffer.mapped, 0, sizeof(Counters));
+        vmaFlushAllocation(ctx_.allocator, slot.buffer.allocation, 0, VK_WHOLE_SIZE);
+        slot.expected = 0;
     }
 
     vk::Context& ctx_;
@@ -415,6 +531,8 @@ private:
     std::array<VkDescriptorSet, kRing> sets_{};
     uint32_t next_set_ = 0;
     vk::Image history_[2];
+    CounterSlot counters_[kCounterSlots];
+    vk::Buffer out_buffer_;
     // the output path 1 image (see OutputPath)
     vk::Image scratch_;
     // the history image this frame writes; the other one holds last frame's result
@@ -433,7 +551,7 @@ void SetBuiltinUpscalerView(int view) {
 }
 
 void SetBuiltinUpscalerPath(int path) {
-    g_path.store(std::clamp(path, 0, 1));
+    g_path.store(std::clamp(path, 0, 2));
 }
 
 std::unique_ptr<UpscaleBackend> CreateBuiltinBackend(vk::Context& ctx) {
