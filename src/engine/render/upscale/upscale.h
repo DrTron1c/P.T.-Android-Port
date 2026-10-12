@@ -238,6 +238,10 @@ void SetBuiltinUpscalerView(int view);
 // Where the built-in upscaler's shader writes: 0 the engine's output image, 1 an image of its own copied into it afterwards, 2 a
 // buffer copied into it afterwards (the Android settings panel's Upscaler output; PT_BUILTIN_PATH at start).
 void SetBuiltinUpscalerPath(int path);
+// How the built-in upscaler makes its picture: 0 a compute shader, 1 full screen draws (the default: the first GPU it ran on, an
+// Adreno 740, kept only the top 128 rows of a compute shader's output; the Android settings panel's Upscaler method, PT_BUILTIN_METHOD
+// at start).
+void SetBuiltinUpscalerMethod(int method);
 std::unique_ptr<UpscaleBackend> CreateDlssBackend(vk::Context& ctx);
 // Apple MetalFX (metalfx_backend.mm, macOS only): the port's temporal upscaler on a Metal command buffer
 std::unique_ptr<UpscaleBackend> CreateMetalfxBackend(vk::Context& ctx);

@@ -35,6 +35,9 @@ std::atomic<int> g_view{-1};
 // where the shader writes: 0 the engine's output image itself, 1 an image of its own that is then copied into it, 2 a buffer that
 // is then copied into it
 std::atomic<int> g_path{-1};
+// how the picture is made: 0 a compute shader, 1 a full screen draw (the compute shaders of the first GPU this ran on, an Adreno 740,
+// wrote only the top 128 rows of their output and left the rest of a picture black)
+std::atomic<int> g_method{-1};
 
 int TestView() {
     int view = g_view.load();
@@ -55,6 +58,19 @@ int OutputPath() {
     }
     return path;
 }
+
+int Method() {
+    int method = g_method.load();
+    if (method < 0) {
+        const char* env = std::getenv("PT_BUILTIN_METHOD");
+        method = env ? std::clamp(std::atoi(env), 0, 1) : 1;
+        g_method.store(method);
+    }
+    return method;
+}
+
+// the stages that read the push constants and the first five bindings: the compute shader and the full screen draw
+constexpr VkShaderStageFlags kStages = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
 // What the shader counts into a buffer of the CPU's (read back three dispatches later): the work groups that ran, the furthest row
 // and column of them and how many ran in each 64th of the rows, to see whether a GPU runs a whole dispatch
@@ -111,7 +127,7 @@ public:
         }
         display_ = create.display;
         render_ = create.render;
-        const VkImageUsageFlags usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        const VkImageUsageFlags usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         const VkExtent3D size{std::max(display_.width, 1u), std::max(display_.height, 1u), 1};
         for (vk::Image& image : history_) {
             if (!ctx_.CreateImage(image, kHistoryFormat, size, usage, 1, 1, VK_IMAGE_ASPECT_COLOR_BIT)) {
@@ -210,9 +226,9 @@ public:
         // nobody has tried is read from this and the status lines)
         if (frames_ < 3 || frames_ % 600 == 0) {
             LogInfo("upscale: built-in dispatch {}: render {}x{} display {}x{} output {}x{} jitter {:.3f} {:.3f} exposure {:.6f} reset {} view {} "
-                    "path {} sharpness {:.2f} layouts color {} depth {} motion {} reactive {} output {}",
+                    "path {} method {} sharpness {:.2f} layouts color {} depth {} motion {} reactive {} output {}",
                     frames_, d.render.width, d.render.height, d.display.width, d.display.height, d.output.extent.width, d.output.extent.height,
-                    d.jitter.x, d.jitter.y, push.a[2], push.b[1] > 0.5 ? 1 : 0, view, copy ? 1 : buffered ? 2 : 0, d.sharpness,
+                    d.jitter.x, d.jitter.y, push.a[2], push.b[1] > 0.5 ? 1 : 0, view, copy ? 1 : buffered ? 2 : 0, Method(), d.sharpness,
                     static_cast<int>(d.color.layout), static_cast<int>(d.depth.layout), static_cast<int>(d.motion.layout),
                     static_cast<int>(d.reactive.layout), static_cast<int>(d.output.layout));
         }
@@ -240,6 +256,9 @@ public:
             Barrier(d.cmd, cleared);
             return true;
         }
+        if (Method() == 1) {
+            return Draw(d, push, read, sharpen);
+        }
         vkCmdBindPipeline(d.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_);
         const uint32_t groups_x = (d.display.width + 7) / 8;
         const uint32_t groups_y = (d.display.height + 7) / 8;
@@ -255,7 +274,7 @@ public:
         VkDescriptorSet set = NextSet();
         WriteSet(set, d, history_[read], history_[write_], output_view, counter.buffer.buffer);
         vkCmdBindDescriptorSets(d.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, layout_, 0, 1, &set, 0, nullptr);
-        vkCmdPushConstants(d.cmd, layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+        vkCmdPushConstants(d.cmd, layout_, kStages, 0, sizeof(push), &push);
         vkCmdDispatch(d.cmd, groups_x, groups_y, 1);
 
         if (sharpen) {
@@ -270,7 +289,7 @@ public:
             VkDescriptorSet sharpen_set = NextSet();
             WriteSet(sharpen_set, d, history_[write_], history_[write_], output_view, counter.buffer.buffer);
             vkCmdBindDescriptorSets(d.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, layout_, 0, 1, &sharpen_set, 0, nullptr);
-            vkCmdPushConstants(d.cmd, layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+            vkCmdPushConstants(d.cmd, layout_, kStages, 0, sizeof(push), &push);
             vkCmdDispatch(d.cmd, groups_x, groups_y, 1);
         }
 
@@ -313,6 +332,71 @@ public:
         return true;
     }
 
+    // The picture as two full screen draws (Method 1): pass 0 resolves into the output and the history, pass 1 (when the sharpness is
+    // above zero) sharpens the history over the output. The images stay in GENERAL, which a colour attachment and a texture can both
+    // use, so no layout changes are needed.
+    bool Draw(const UpscaleDispatch& d, Push push, uint32_t read, bool sharpen) {
+        if (d.output.format != kHistoryFormat || !(d.output.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)) {
+            if (!draw_warned_) {
+                draw_warned_ = true;
+                LogWarn("upscale: the output image (format {}, usage {:#x}) cannot be drawn to; the built-in upscaler's draw method is off", static_cast<int>(d.output.format),
+                        static_cast<uint32_t>(d.output.usage));
+            }
+            return false;
+        }
+        if (!EnsureDrawPipelines()) {
+            return false;
+        }
+        const VkRect2D area{{0, 0}, d.display};
+        VkMemoryBarrier2 all{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+        all.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        all.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
+        all.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        all.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+        // last frame's history writes before this frame reads them, and the engine's passes before the first read of its images
+        Barrier(d.cmd, all);
+
+        // the counters buffer fills the unused buffer bindings
+        VkBuffer filler = counters_[0].buffer.buffer;
+        push.b[2] = 0.0f;
+        VkDescriptorSet set = NextSet();
+        WriteSet(set, d, history_[read], history_[write_], d.output.view, filler);
+        VkRenderingAttachmentInfo colors[2]{};
+        for (VkRenderingAttachmentInfo& color : colors) {
+            color = {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+            color.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+            color.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        }
+        colors[0].imageView = d.output.view;
+        colors[1].imageView = history_[write_].view;
+        BeginDraw(d.cmd, area, colors, 2);
+        vkCmdBindPipeline(d.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw_resolve_);
+        vkCmdBindDescriptorSets(d.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &set, 0, nullptr);
+        vkCmdPushConstants(d.cmd, layout_, kStages, 0, sizeof(push), &push);
+        vkCmdDraw(d.cmd, 3, 1, 0, 0);
+        vkCmdEndRendering(d.cmd);
+
+        if (sharpen) {
+            // the sharpen pass reads the history the resolve just wrote and overwrites the output
+            Barrier(d.cmd, all);
+            push.b[2] = 1.0f;
+            VkDescriptorSet sharpen_set = NextSet();
+            WriteSet(sharpen_set, d, history_[write_], history_[write_], d.output.view, filler);
+            BeginDraw(d.cmd, area, colors, 1);
+            vkCmdBindPipeline(d.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw_sharpen_);
+            vkCmdBindDescriptorSets(d.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &sharpen_set, 0, nullptr);
+            vkCmdPushConstants(d.cmd, layout_, kStages, 0, sizeof(push), &push);
+            vkCmdDraw(d.cmd, 3, 1, 0, 0);
+            vkCmdEndRendering(d.cmd);
+        }
+        // the output for the resolve pass that samples it (the target's layout change follows, with its own barrier)
+        Barrier(d.cmd, all);
+        write_ = read;
+        last_exposure_ = push.a[2];
+        return true;
+    }
+
     void Release() override {
         if (ctx_.device) {
             vkDeviceWaitIdle(ctx_.device);
@@ -343,6 +427,50 @@ private:
         vkCmdPipelineBarrier2(cmd, &dependency);
     }
 
+    // dynamic rendering into `count` of the attachments, with the dynamic state every pipeline of the engine expects
+    static void BeginDraw(VkCommandBuffer cmd, const VkRect2D& area, const VkRenderingAttachmentInfo* colors, uint32_t count) {
+        VkRenderingInfo rendering{VK_STRUCTURE_TYPE_RENDERING_INFO};
+        rendering.renderArea = area;
+        rendering.layerCount = 1;
+        rendering.colorAttachmentCount = count;
+        rendering.pColorAttachments = colors;
+        vkCmdBeginRendering(cmd, &rendering);
+        SetViewport(cmd, area);
+        vkCmdSetCullMode(cmd, VK_CULL_MODE_NONE);
+        vkCmdSetFrontFace(cmd, VK_FRONT_FACE_COUNTER_CLOCKWISE);
+    }
+
+    bool EnsureDrawPipelines() {
+        if (draw_resolve_ && draw_sharpen_) {
+            return true;
+        }
+        if (!EnsurePipeline()) {
+            return false;
+        }
+        PipelineDesc desc;
+        desc.layout = layout_;
+        desc.fragment = "builtin_upscale.frag";
+        desc.colors = {kHistoryFormat, kHistoryFormat};
+        draw_resolve_ = CreateGraphicsPipeline(ctx_.device, desc);
+        desc.fragment = "builtin_upscale_sharpen.frag";
+        desc.colors = {kHistoryFormat};
+        draw_sharpen_ = CreateGraphicsPipeline(ctx_.device, desc);
+        if (!draw_resolve_ || !draw_sharpen_) {
+            LogError("upscale: the built-in upscaler's draw pipelines could not be created");
+            if (draw_resolve_) {
+                vkDestroyPipeline(ctx_.device, draw_resolve_, nullptr);
+            }
+            if (draw_sharpen_) {
+                vkDestroyPipeline(ctx_.device, draw_sharpen_, nullptr);
+            }
+            draw_resolve_ = VK_NULL_HANDLE;
+            draw_sharpen_ = VK_NULL_HANDLE;
+            return false;
+        }
+        LogInfo("upscale: built-in draw pipelines created");
+        return true;
+    }
+
     bool EnsurePipeline() {
         if (pipeline_) {
             return true;
@@ -353,7 +481,7 @@ private:
         }
         VkDescriptorSetLayoutBinding bindings[9]{};
         for (uint32_t i = 0; i < 5; ++i) {
-            bindings[i] = {i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+            bindings[i] = {i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, kStages, nullptr};
         }
         bindings[5] = {5, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
         bindings[6] = {6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
@@ -386,7 +514,7 @@ private:
             DestroyPipeline();
             return false;
         }
-        const VkPushConstantRange push{VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(Push)};
+        const VkPushConstantRange push{kStages, 0, sizeof(Push)};
         VkPipelineLayoutCreateInfo layout_info{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
         layout_info.setLayoutCount = 1;
         layout_info.pSetLayouts = &set_layout_;
@@ -428,6 +556,12 @@ private:
         if (pipeline_) {
             vkDestroyPipeline(device, pipeline_, nullptr);
         }
+        if (draw_resolve_) {
+            vkDestroyPipeline(device, draw_resolve_, nullptr);
+        }
+        if (draw_sharpen_) {
+            vkDestroyPipeline(device, draw_sharpen_, nullptr);
+        }
         if (layout_) {
             vkDestroyPipelineLayout(device, layout_, nullptr);
         }
@@ -444,6 +578,8 @@ private:
             vkDestroySampler(device, linear_, nullptr);
         }
         pipeline_ = VK_NULL_HANDLE;
+        draw_resolve_ = VK_NULL_HANDLE;
+        draw_sharpen_ = VK_NULL_HANDLE;
         layout_ = VK_NULL_HANDLE;
         pool_ = VK_NULL_HANDLE;
         set_layout_ = VK_NULL_HANDLE;
@@ -526,6 +662,10 @@ private:
     VkDescriptorPool pool_ = VK_NULL_HANDLE;
     VkPipelineLayout layout_ = VK_NULL_HANDLE;
     VkPipeline pipeline_ = VK_NULL_HANDLE;
+    // Method 1's pipelines: pass 0 (output and history) and pass 1 (the sharpened output)
+    VkPipeline draw_resolve_ = VK_NULL_HANDLE;
+    VkPipeline draw_sharpen_ = VK_NULL_HANDLE;
+    bool draw_warned_ = false;
     VkSampler nearest_ = VK_NULL_HANDLE;
     VkSampler linear_ = VK_NULL_HANDLE;
     std::array<VkDescriptorSet, kRing> sets_{};
@@ -548,6 +688,10 @@ private:
 
 void SetBuiltinUpscalerView(int view) {
     g_view.store(std::clamp(view, 0, kLastView));
+}
+
+void SetBuiltinUpscalerMethod(int method) {
+    g_method.store(std::clamp(method, 0, 1));
 }
 
 void SetBuiltinUpscalerPath(int path) {

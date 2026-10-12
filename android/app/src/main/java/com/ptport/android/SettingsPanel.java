@@ -123,6 +123,9 @@ final class SettingsPanel {
                 new String[] { "Native (anti-aliasing only)", "Quality", "Balanced", "Performance", "Ultra performance" }, new int[] { 0, 1, 2, 3, 4 }));
         settings.add(new Setting("upscale_sharpness", "Upscaler sharpness", "Sharpens the upscaled picture. Off leaves it as the upscaler made it.",
                 new String[] { "Off", "20%", "40%", "60%", "80%", "100%" }, new int[] { 0, 2, 4, 6, 8, 10 }));
+        settings.add(new Setting("upscale_method", "Upscaler method",
+                "How the Built-in upscaler makes its picture. Draw is the default; Compute is the first version, which on some GPUs leaves most of the picture black.",
+                new String[] { "Compute", "Draw" }, new int[] { 0, 1 }));
         settings.add(new Setting("upscale_debug", "Upscaler test view",
                 "Only for finding a fault: shows one stage of the Built-in upscaler instead of the game. Gradient is a pattern that does not depend on the game; leave it Off to play.",
                 new String[] { "Off", "Gradient", "Game", "Motion", "Depth", "History", "Reactive", "Clear", "Engine" },
@@ -253,6 +256,7 @@ final class SettingsPanel {
         String q = quality == null ? "quality" : quality.trim().toLowerCase();
         values.put("upscale_quality", q.equals("native") ? 0 : q.equals("balanced") ? 2 : q.equals("performance") ? 3 : q.equals("ultra_performance") ? 4 : 1);
         values.put("upscale_sharpness", clamp(Math.round(decimal(ini, "upscaling.sharpness", 0.0f) * 10.0f), 0, 10));
+        values.put("upscale_method", 1);
         values.put("upscale_debug", 0);
         values.put("upscale_path", 0);
         values.put("vsync", flag(ini, "display.vsync", true));
@@ -485,6 +489,7 @@ final class SettingsPanel {
         settingRow(column, find("upscaler"));
         settingRow(column, find("upscale_quality"));
         settingRow(column, find("upscale_sharpness"));
+        settingRow(column, find("upscale_method"));
         settingRow(column, find("upscale_debug"));
         settingRow(column, find("upscale_path"));
         heading(column, "Lighting");

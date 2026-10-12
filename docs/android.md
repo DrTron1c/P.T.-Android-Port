@@ -155,8 +155,11 @@ The desktop settings are far too heavy for a tablet GPU at the tablet's own reso
   (`PTActivity.applyPictureSize` resizes the fixed surface; the game sees a window of the new size).
 - The upscaler (Settings > Upscaler, Upscaler quality, Upscaler sharpness): FSR 3, FSR 4, DLSS and XeSS are Windows DLLs or need a
   vendor's GPU and MetalFX is Apple's, so the game's Upscaler list shows them greyed. The Android build has its own, **Built-in**
-  (`builtin_backend.cpp`, `builtin_upscale.comp`; docs/upscaling.md, Built-in temporal upscaler): a compute shader that needs no
-  library and runs on any Vulkan GPU. It draws the scene at a fraction of the picture size (Quality is 2/3 of each side, Performance
+  (`builtin_backend.cpp`, `builtin_upscale.glsl` with `builtin_upscale.frag` and `builtin_upscale_sharpen.frag`, or `builtin_upscale.comp`;
+  docs/upscaling.md, Built-in temporal upscaler): a shader that needs no library and runs on any Vulkan GPU. Settings > Upscaler >
+  Upscaler method (`PT_BUILTIN_METHOD`) picks Draw (the default: two full screen draws into colour attachments) or Compute (the first
+  version: on the tablet's Adreno 740 every compute work group ran, but only the top 128 rows of the picture it wrote arrived, so most of
+  the screen was black; the engine's own luminance compute shader gave garbage on it too). It draws the scene at a fraction of the picture size (Quality is 2/3 of each side, Performance
   1/2), jittered, and rebuilds the full size picture from the last frames. It is off by default, the presets do not touch it, and it
   is untested on the tablet: the first builds that have it are the first run of its shader on an Adreno. The game's own settings page
   (pause menu, PC settings) has the same Upscaler, Quality and Sharpness rows. If the picture goes wrong with it on, set Upscaler to Off.

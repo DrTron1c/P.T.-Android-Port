@@ -2765,6 +2765,11 @@ private:
             pt::SetBuiltinUpscalerPath(std::clamp(value, 0, 2));
             return true;
         }
+        if (name == "upscale_method") {
+            // how the Built-in upscaler makes its picture (not kept in pt.ini): 0 compute shader, 1 full screen draws
+            pt::SetBuiltinUpscalerMethod(std::clamp(value, 0, 1));
+            return true;
+        }
         if (name == "fps_limit") {
             // any number of frames a second (the page's own row has a list), 0 for no limit
             app_.settings.display.fps_limit = std::clamp(value, 0, 1000);
