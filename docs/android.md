@@ -118,14 +118,16 @@ the game starts.
 - With a driver installed the window's surface is made by the driver's own `vkCreateAndroidSurfaceKHR`, because SDL makes it through the
   system's `libvulkan.so`.
 - pt.log says which one is used: `android: custom GPU driver ...` and `vulkan: using ...`.
-- With a custom driver every render pass is drawn in system memory: the game sets `TU_DEBUG=sysmem` before it loads the driver
-  (`OpenCustomGpuDriver`; a value already in the environment is kept, and the phone's own driver ignores it). With Turnip on the
-  Adreno 740 (Xiaomi Pad 6S Pro, Android 16) the picture came out in black columns exactly 96 pixels apart (Turnip's tile width on
-  that GPU), with a sliver of the frame at each tile edge, over the scene and the touch buttons alike and with HDR on or off, and now
-  and then a whole frame (a pass the driver happened to draw in sysmem): Turnip's tiled (GMEM) rendering lost most of each tile.
-  Waiting for the GPU before presenting (1.02) and copying each frame into the window by the CPU instead of a swapchain (1.03) did not
-  change it, which put the fault in the drawing and not in the hand-over to the screen; both were taken out again in 1.04. Sysmem
-  costs some speed on passes that GMEM would have drawn faster. pt.log says `android: custom GPU driver ... (TU_DEBUG=sysmem)`.
+- **Driver workarounds** (shown while a driver is installed): presets of Turnip's own switches, Mesa's `TU_DEBUG`, which the game
+  sets before it loads the driver (`OpenCustomGpuDriver`; GpuDriver.java keeps the choice in `gpu_driver/tu_debug.txt`, and the phone's
+  own driver ignores it): Driver's own (nothing), No tiling (`sysmem`), No UBWC (`noubwc`), Both, and Safest
+  (`sysmem,noubwc,nolrz,flushall`), the default. With Turnip on the Adreno 740 (Xiaomi Pad 6S Pro, Android 16) the picture came out
+  in black columns over the scene and the touch buttons alike, with a whole frame now and then: 96 pixels apart (Turnip's tile width
+  there) with the driver's own behaviour, 16 of every 48 pixels with `sysmem` alone (1.04). Waiting for the GPU before presenting
+  (1.02) and copying each frame into the window by the CPU instead of a swapchain (1.03) did not change it, so the fault is in how the
+  frame is drawn, not in the hand-over to the screen; both were taken out again. Which switch is enough is not known yet: Safest is
+  the slowest, and the lighter presets are there to find the fastest one that keeps the picture whole. pt.log says
+  `android: custom GPU driver ... (TU_DEBUG=...)`.
 - Android 11 or newer; the game needs Vulkan 1.3, so use a recent build.
 
 ## Controls

@@ -100,6 +100,8 @@ final class SettingsPanel {
     private final Map<String, Integer> values = new LinkedHashMap<String, Integer>();
     private Runnable pickDriver;
     private TextView driverStatus;
+    private LinearLayout driverOptions;
+    private final List<Button> driverOptionButtons = new ArrayList<Button>();
 
     SettingsPanel(Context context) {
         this.context = context;
@@ -475,6 +477,13 @@ final class SettingsPanel {
         if (driverStatus == null) return;
         String name = GpuDriver.name(context);
         driverStatus.setText(name == null ? "In use: the phone's own driver" : "In use: " + name);
+        if (driverOptions == null) return;
+        // the driver's switches are only there while a driver is installed (they are kept in its folder)
+        driverOptions.setVisibility(name == null ? View.GONE : View.VISIBLE);
+        int chosen = GpuDriver.option(context);
+        for (int i = 0; i < driverOptionButtons.size(); ++i) {
+            paint(driverOptionButtons.get(i), i == chosen);
+        }
     }
 
     private void driverSection(LinearLayout column) {
@@ -507,6 +516,33 @@ final class SettingsPanel {
         });
         row.addView(remove, weighted());
         column.addView(row);
+
+        driverOptions = new LinearLayout(context);
+        driverOptions.setOrientation(LinearLayout.VERTICAL);
+        driverOptions.setPadding(0, dp(14), 0, 0);
+        driverOptions.addView(label("Driver workarounds", 16, MenuStyle.INK, font, 0.08f));
+        TextView about = label("If the picture breaks into black stripes or blocks with this driver, these turn off the parts of Turnip that can "
+                + "cause it, each one slower than the one before: tiled drawing, colour compression, and in Safest also the coarse depth test and "
+                + "its cache shortcuts. Safest is the first choice; if the picture is clean with it, try the lighter ones for more speed. Takes "
+                + "effect the next time the game starts.", 11, MenuStyle.DIM, mono, 0.03f);
+        about.setPadding(0, dp(2), 0, 0);
+        driverOptions.addView(about);
+        LinearLayout options = buttonRow(dp(42));
+        for (int i = 0; i < GpuDriver.OPTION_LABELS.length; ++i) {
+            final int index = i;
+            Button button = choiceButton(GpuDriver.OPTION_LABELS[i]);
+            button.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    GpuDriver.setOption(context, index);
+                    showDriver();
+                }
+            });
+            driverOptionButtons.add(button);
+            options.addView(button, weighted());
+        }
+        driverOptions.addView(options);
+        column.addView(driverOptions);
         showDriver();
     }
 

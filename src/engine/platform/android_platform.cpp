@@ -227,12 +227,24 @@ void* OpenCustomGpuDriver(std::string& error) {
     }
     const std::string hooks = std::filesystem::path(info.dli_fname).parent_path().string() + "/";
     const std::string driver_dir = dir.string() + "/";
-    // Turnip (Mesa) draws a render pass either in tiles through the GPU's fast on-chip memory (GMEM) or straight into memory
-    // (sysmem). With Turnip on the Adreno 740 the GMEM passes broke the picture: black columns 96 pixels apart (Turnip's tile width
-    // there) with a sliver of the frame at each tile edge, over the scene and the touch buttons alike, now and then a whole frame
-    // when the driver chose sysmem for the pass. Every pass in sysmem; Mesa reads TU_DEBUG when the instance is made, and a value
-    // already in the environment is kept. The phone's own driver ignores it.
-    setenv("TU_DEBUG", "sysmem", 0);
+    // Turnip's own switches (Mesa's TU_DEBUG, read when the instance is made; the phone's own driver ignores it), chosen in Settings >
+    // GPU driver > Driver workarounds (GpuDriver.java writes tu_debug.txt; an empty file is the driver's own behaviour). With Turnip on
+    // the Adreno 740 the picture came out in black columns over the scene and the touch buttons alike (96 pixels apart with tiled
+    // drawing, 16 of every 48 without it, a whole frame now and then), so the default turns off everything that can cause such
+    // stripes. kDefaultTuDebug must match GpuDriver.OPTION_FLAGS[DEFAULT_OPTION].
+    static constexpr const char* kDefaultTuDebug = "sysmem,noubwc,nolrz,flushall";
+    std::string tu_debug = kDefaultTuDebug;
+    if (std::ifstream flags{dir / "tu_debug.txt"}) {
+        tu_debug.clear();
+        std::getline(flags, tu_debug);
+    }
+    // only Mesa's flag words (letters, digits, '_' and commas)
+    std::erase_if(tu_debug, [](char c) { return !(std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == ','); });
+    if (!tu_debug.empty()) {
+        setenv("TU_DEBUG", tu_debug.c_str(), 1);
+    } else {
+        unsetenv("TU_DEBUG");
+    }
     void* handle = adrenotools_open_libvulkan(RTLD_NOW | RTLD_LOCAL, ADRENOTOOLS_DRIVER_CUSTOM, nullptr, hooks.c_str(),
                                               driver_dir.c_str(), library.c_str(), nullptr, nullptr);
     if (!handle) {
