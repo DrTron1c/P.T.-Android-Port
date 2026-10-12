@@ -7,6 +7,12 @@ name: Android
 on:
   push:
     branches: [android]
+    # a change that is only words (the README, the docs, the issue form) builds nothing: each build is a release, and only the
+    # newest three are kept
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - ".github/ISSUE_TEMPLATE/**"
   workflow_dispatch:
 
 permissions:

@@ -158,8 +158,9 @@ The APK keeps the file name `P.T.PC.Port-Android-arm64.apk` because installed bu
 | `docs/android.md` | the full Android notes |
 | `docs/pc-port.md` | the desktop port's own README |
 
-Branches: **`android`** (the default) is this port, `main` is the desktop port's code this fork started from, and `ci-logs` holds the
-CI's latest short log.
+Branches: **`android`** is where the port is built (a push to it starts the CI; a push that only changes the README or the docs does
+not) and `main` is kept at the same commit, so this page shows the same README on either; `ci-logs` holds the CI's latest short log.
+The desktop port itself lives upstream at [LoreanXavier/pt-pc](https://github.com/LoreanXavier/pt-pc).
 
 The game runs in its own process (`:game`) next to the menu, because SDL cannot start the game's `main` twice in one process; the
 process ends with the game and the next Start gets a new one.

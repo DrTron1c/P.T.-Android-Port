@@ -142,7 +142,8 @@ The Android NDK (r26 or newer), CMake 3.28, Ninja, Python 3, JDK 17 and Gradle 8
     tools/android/build.sh native      # libmain.so, libSDL3.so, shaders; staged into android/app
     tools/android/build.sh apk         # Gradle: dist/P.T.PC.Port-Android-arm64.apk
 
-`.github/workflows/android.yml` does both on GitHub's Linux runner for every push to the `android` branch or a manual run
+`.github/workflows/android.yml` does both on GitHub's Linux runner for every push to the `android` branch (except one that only changes
+`*.md`, `docs/` or the issue form, which would only use up one of the three kept releases) or a manual run
 (Actions > Android > Run workflow). The APK is a workflow artifact and a published prerelease `android-build-N` (N is the run
 number, the app's versionCode; the newest three are kept), which is what the installed app's updater finds. Whatever the result, the last step pushes a short log (status, the tail of each build log, the error lines) to the
 `ci-logs` branch.
