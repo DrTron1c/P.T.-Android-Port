@@ -227,6 +227,12 @@ void* OpenCustomGpuDriver(std::string& error) {
     }
     const std::string hooks = std::filesystem::path(info.dli_fname).parent_path().string() + "/";
     const std::string driver_dir = dir.string() + "/";
+    // Turnip (Mesa) draws a render pass either in tiles through the GPU's fast on-chip memory (GMEM) or straight into memory
+    // (sysmem). With Turnip on the Adreno 740 the GMEM passes broke the picture: black columns 96 pixels apart (Turnip's tile width
+    // there) with a sliver of the frame at each tile edge, over the scene and the touch buttons alike, now and then a whole frame
+    // when the driver chose sysmem for the pass. Every pass in sysmem; Mesa reads TU_DEBUG when the instance is made, and a value
+    // already in the environment is kept. The phone's own driver ignores it.
+    setenv("TU_DEBUG", "sysmem", 0);
     void* handle = adrenotools_open_libvulkan(RTLD_NOW | RTLD_LOCAL, ADRENOTOOLS_DRIVER_CUSTOM, nullptr, hooks.c_str(),
                                               driver_dir.c_str(), library.c_str(), nullptr, nullptr);
     if (!handle) {
@@ -240,7 +246,8 @@ void* OpenCustomGpuDriver(std::string& error) {
         return nullptr;
     }
     g_gpu_driver = handle;
-    LogInfo("android: custom GPU driver {}", library);
+    const char* tu_debug = std::getenv("TU_DEBUG");
+    LogInfo("android: custom GPU driver {} (TU_DEBUG={})", library, tu_debug ? tu_debug : "");
     return get_proc;
 }
 

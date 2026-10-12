@@ -118,15 +118,14 @@ the game starts.
 - With a driver installed the window's surface is made by the driver's own `vkCreateAndroidSurfaceKHR`, because SDL makes it through the
   system's `libvulkan.so`.
 - pt.log says which one is used: `android: custom GPU driver ...` and `vulkan: using ...`.
-- With a custom driver the frames reach the screen through the CPU, not a Vulkan swapchain (`CpuPresent` in `vk_context.cpp`,
-  `Context::cpu_present`). With Turnip on the Adreno 740 (Xiaomi Pad 6S Pro, Android 16) the picture came out in black blocks and
-  red stripes, the scene and the touch buttons alike, with a whole frame now and then, with HDR on or off, and waiting for the GPU
-  before presenting (1.02) did not change it: Turnip writes the system's swapchain buffers (gralloc) in a layout the compositor does
-  not read them in. So the game draws into images of its own, each frame is copied into a host buffer and from there, row by row,
-  into the window's buffer locked for the CPU (`ANativeWindow_lock`, RGBX), which is linear whatever the driver makes of gralloc. The
-  Vulkan surface is destroyed after the device is made, because it holds the window for a swapchain. HDR is off in this mode, and the
-  copy costs a millisecond or two a frame. pt.log says `frames are copied into the window by the CPU` and `CPU presentation into the
-  window`.
+- With a custom driver every render pass is drawn in system memory: the game sets `TU_DEBUG=sysmem` before it loads the driver
+  (`OpenCustomGpuDriver`; a value already in the environment is kept, and the phone's own driver ignores it). With Turnip on the
+  Adreno 740 (Xiaomi Pad 6S Pro, Android 16) the picture came out in black columns exactly 96 pixels apart (Turnip's tile width on
+  that GPU), with a sliver of the frame at each tile edge, over the scene and the touch buttons alike and with HDR on or off, and now
+  and then a whole frame (a pass the driver happened to draw in sysmem): Turnip's tiled (GMEM) rendering lost most of each tile.
+  Waiting for the GPU before presenting (1.02) and copying each frame into the window by the CPU instead of a swapchain (1.03) did not
+  change it, which put the fault in the drawing and not in the hand-over to the screen; both were taken out again in 1.04. Sysmem
+  costs some speed on passes that GMEM would have drawn faster. pt.log says `android: custom GPU driver ... (TU_DEBUG=sysmem)`.
 - Android 11 or newer; the game needs Vulkan 1.3, so use a recent build.
 
 ## Controls
