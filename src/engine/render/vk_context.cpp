@@ -247,6 +247,8 @@ bool Context::Init(SDL_Window* window, bool validation, bool want_hdr) {
         android::CloseCustomGpuDriver();
         if (Check(volkInitialize(), "volkInitialize")) instance_result = vkCreateInstance(&instance_info, nullptr, &instance);
     }
+    wait_idle_before_present = android::CustomGpuDriverActive();
+    if (wait_idle_before_present) LogInfo("vulkan: custom GPU driver: each frame is finished before it is presented");
 #endif
     if (!Check(instance_result, "vkCreateInstance")) {
         return false;
@@ -894,6 +896,10 @@ VkResult Context::AcquireNextImage(VkSemaphore semaphore, uint32_t* index) {
 }
 
 VkResult Context::QueuePresent(const VkPresentInfoKHR& info) {
+    if (wait_idle_before_present) {
+        // the frame's commands are done before the compositor gets the image (wait_idle_before_present, vk_context.h)
+        CheckDeviceLost(vkQueueWaitIdle(queue), "wait before present");
+    }
     if (swapchain_owner_) {
         return swapchain_owner_->QueuePresent(queue, info);
     }

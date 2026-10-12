@@ -111,6 +111,10 @@ public:
     bool force_vsync = false;
     // the last CreateSwapchain failed in Vulkan (the surface or a swapchain hook refused it), not for want of a window size
     bool swapchain_refused = false;
+    // Android with a custom GPU driver (Turnip through libadrenotools): the frame is finished on the GPU before it is handed to the
+    // compositor. The release fence that should hold the compositor back until then did not, and frames were shown half drawn (black,
+    // in stripes and blocks, now and then whole).
+    bool wait_idle_before_present = false;
 
     // Ray queries (the ray traced shadows PC option): set want_ray_query before Init to create the device with
     // VK_KHR_acceleration_structure, VK_KHR_ray_query, VK_KHR_deferred_host_operations and buffer device addresses

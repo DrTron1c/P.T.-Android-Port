@@ -118,6 +118,10 @@ the game starts.
 - With a driver installed the window's surface is made by the driver's own `vkCreateAndroidSurfaceKHR`, because SDL makes it through the
   system's `libvulkan.so`.
 - pt.log says which one is used: `android: custom GPU driver ...` and `vulkan: using ...`.
+- With a custom driver each frame is finished on the GPU before it is presented (`vkQueueWaitIdle` in `Context::QueuePresent`,
+  `wait_idle_before_present`). With Turnip on the Adreno 740 (Xiaomi Pad 6S Pro, Android 16) frames were shown before they were
+  drawn: black, red stripes and blocks over the scene and the HUD, now and then a whole frame. The wait costs a little speed, because
+  the CPU no longer prepares the next frame while the GPU draws this one; pt.log says `each frame is finished before it is presented`.
 - Android 11 or newer; the game needs Vulkan 1.3, so use a recent build.
 
 ## Controls
