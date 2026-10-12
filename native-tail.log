@@ -1,0 +1,300 @@
+ 16958 |     VkBuffer buffer,
+       |     ^
+       |              _Nonnull
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16959:5: warning: pointer is missing a nullability type specifier (_Nonnull, _Nullable, or _Null_unspecified) [-Wnullability-completeness]
+ 16959 |     VmaAllocation allocation)
+       |     ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16959:5: note: insert '_Nullable' if the pointer may be null
+ 16959 |     VmaAllocation allocation)
+       |     ^
+       |                   _Nullable
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16959:5: note: insert '_Nonnull' if the pointer should never be null
+ 16959 |     VmaAllocation allocation)
+       |     ^
+       |                   _Nonnull
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16986:5: warning: pointer is missing a nullability type specifier (_Nonnull, _Nullable, or _Null_unspecified) [-Wnullability-completeness]
+ 16986 |     VmaAllocator allocator,
+       |     ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16986:5: note: insert '_Nullable' if the pointer may be null
+ 16986 |     VmaAllocator allocator,
+       |     ^
+       |                  _Nullable
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16986:5: note: insert '_Nonnull' if the pointer should never be null
+ 16986 |     VmaAllocator allocator,
+       |     ^
+       |                  _Nonnull
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16987:28: warning: pointer is missing a nullability type specifier (_Nonnull, _Nullable, or _Null_unspecified) [-Wnullability-completeness]
+ 16987 |     const VkImageCreateInfo* pImageCreateInfo,
+       |                            ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16987:28: note: insert '_Nullable' if the pointer may be null
+ 16987 |     const VkImageCreateInfo* pImageCreateInfo,
+       |                            ^
+       |                              _Nullable
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16987:28: note: insert '_Nonnull' if the pointer should never be null
+ 16987 |     const VkImageCreateInfo* pImageCreateInfo,
+       |                            ^
+       |                              _Nonnull
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16988:34: warning: pointer is missing a nullability type specifier (_Nonnull, _Nullable, or _Null_unspecified) [-Wnullability-completeness]
+ 16988 |     const VmaAllocationCreateInfo* pAllocationCreateInfo,
+       |                                  ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16988:34: note: insert '_Nullable' if the pointer may be null
+ 16988 |     const VmaAllocationCreateInfo* pAllocationCreateInfo,
+       |                                  ^
+       |                                    _Nullable
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16988:34: note: insert '_Nonnull' if the pointer should never be null
+ 16988 |     const VmaAllocationCreateInfo* pAllocationCreateInfo,
+       |                                  ^
+       |                                    _Nonnull
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16989:5: warning: pointer is missing a nullability type specifier (_Nonnull, _Nullable, or _Null_unspecified) [-Wnullability-completeness]
+ 16989 |     VkImage* pImage,
+       |     ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16989:5: note: insert '_Nullable' if the pointer may be null
+ 16989 |     VkImage* pImage,
+       |     ^      
+       |             _Nullable 
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16989:5: note: insert '_Nonnull' if the pointer should never be null
+ 16989 |     VkImage* pImage,
+       |     ^      
+       |             _Nonnull 
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16989:12: warning: pointer is missing a nullability type specifier (_Nonnull, _Nullable, or _Null_unspecified) [-Wnullability-completeness]
+ 16989 |     VkImage* pImage,
+       |            ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16989:12: note: insert '_Nullable' if the pointer may be null
+ 16989 |     VkImage* pImage,
+       |            ^
+       |              _Nullable
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16989:12: note: insert '_Nonnull' if the pointer should never be null
+ 16989 |     VkImage* pImage,
+       |            ^
+       |              _Nonnull
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16990:5: warning: pointer is missing a nullability type specifier (_Nonnull, _Nullable, or _Null_unspecified) [-Wnullability-completeness]
+ 16990 |     VmaAllocation* pAllocation,
+       |     ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16990:5: note: insert '_Nullable' if the pointer may be null
+ 16990 |     VmaAllocation* pAllocation,
+       |     ^            
+       |                   _Nullable 
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16990:5: note: insert '_Nonnull' if the pointer should never be null
+ 16990 |     VmaAllocation* pAllocation,
+       |     ^            
+       |                   _Nonnull 
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16990:18: warning: pointer is missing a nullability type specifier (_Nonnull, _Nullable, or _Null_unspecified) [-Wnullability-completeness]
+ 16990 |     VmaAllocation* pAllocation,
+       |                  ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16990:18: note: insert '_Nullable' if the pointer may be null
+ 16990 |     VmaAllocation* pAllocation,
+       |                  ^
+       |                    _Nullable
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16990:18: note: insert '_Nonnull' if the pointer should never be null
+ 16990 |     VmaAllocation* pAllocation,
+       |                  ^
+       |                    _Nonnull
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16991:22: warning: pointer is missing a nullability type specifier (_Nonnull, _Nullable, or _Null_unspecified) [-Wnullability-completeness]
+ 16991 |     VmaAllocationInfo* pAllocationInfo)
+       |                      ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16991:22: note: insert '_Nullable' if the pointer may be null
+ 16991 |     VmaAllocationInfo* pAllocationInfo)
+       |                      ^
+       |                        _Nullable
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:16991:22: note: insert '_Nonnull' if the pointer should never be null
+ 16991 |     VmaAllocationInfo* pAllocationInfo)
+       |                      ^
+       |                        _Nonnull
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17005:5: warning: pointer is missing a nullability type specifier (_Nonnull, _Nullable, or _Null_unspecified) [-Wnullability-completeness]
+ 17005 |     VmaAllocator allocator,
+       |     ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17005:5: note: insert '_Nullable' if the pointer may be null
+ 17005 |     VmaAllocator allocator,
+       |     ^
+       |                  _Nullable
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17005:5: note: insert '_Nonnull' if the pointer should never be null
+ 17005 |     VmaAllocator allocator,
+       |     ^
+       |                  _Nonnull
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17006:28: warning: pointer is missing a nullability type specifier (_Nonnull, _Nullable, or _Null_unspecified) [-Wnullability-completeness]
+ 17006 |     const VkImageCreateInfo* pImageCreateInfo,
+       |                            ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17006:28: note: insert '_Nullable' if the pointer may be null
+ 17006 |     const VkImageCreateInfo* pImageCreateInfo,
+       |                            ^
+       |                              _Nullable
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17006:28: note: insert '_Nonnull' if the pointer should never be null
+ 17006 |     const VkImageCreateInfo* pImageCreateInfo,
+       |                            ^
+       |                              _Nonnull
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17007:34: warning: pointer is missing a nullability type specifier (_Nonnull, _Nullable, or _Null_unspecified) [-Wnullability-completeness]
+ 17007 |     const VmaAllocationCreateInfo* pAllocationCreateInfo,
+       |                                  ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17007:34: note: insert '_Nullable' if the pointer may be null
+ 17007 |     const VmaAllocationCreateInfo* pAllocationCreateInfo,
+       |                                  ^
+       |                                    _Nullable
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17007:34: note: insert '_Nonnull' if the pointer should never be null
+ 17007 |     const VmaAllocationCreateInfo* pAllocationCreateInfo,
+       |                                  ^
+       |                                    _Nonnull
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17008:9: warning: pointer is missing a nullability type specifier (_Nonnull, _Nullable, or _Null_unspecified) [-Wnullability-completeness]
+ 17008 |     void* pMemoryAllocateNext,
+       |         ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17008:9: note: insert '_Nullable' if the pointer may be null
+ 17008 |     void* pMemoryAllocateNext,
+       |         ^
+       |           _Nullable
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17008:9: note: insert '_Nonnull' if the pointer should never be null
+ 17008 |     void* pMemoryAllocateNext,
+       |         ^
+       |           _Nonnull
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17009:5: warning: pointer is missing a nullability type specifier (_Nonnull, _Nullable, or _Null_unspecified) [-Wnullability-completeness]
+ 17009 |     VkImage* pImage,
+       |     ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17009:5: note: insert '_Nullable' if the pointer may be null
+ 17009 |     VkImage* pImage,
+       |     ^      
+       |             _Nullable 
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17009:5: note: insert '_Nonnull' if the pointer should never be null
+ 17009 |     VkImage* pImage,
+       |     ^      
+       |             _Nonnull 
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17009:12: warning: pointer is missing a nullability type specifier (_Nonnull, _Nullable, or _Null_unspecified) [-Wnullability-completeness]
+ 17009 |     VkImage* pImage,
+       |            ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17009:12: note: insert '_Nullable' if the pointer may be null
+ 17009 |     VkImage* pImage,
+       |            ^
+       |              _Nullable
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17009:12: note: insert '_Nonnull' if the pointer should never be null
+ 17009 |     VkImage* pImage,
+       |            ^
+       |              _Nonnull
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17010:5: warning: pointer is missing a nullability type specifier (_Nonnull, _Nullable, or _Null_unspecified) [-Wnullability-completeness]
+ 17010 |     VmaAllocation* pAllocation,
+       |     ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17010:5: note: insert '_Nullable' if the pointer may be null
+ 17010 |     VmaAllocation* pAllocation,
+       |     ^            
+       |                   _Nullable 
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17010:5: note: insert '_Nonnull' if the pointer should never be null
+ 17010 |     VmaAllocation* pAllocation,
+       |     ^            
+       |                   _Nonnull 
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17010:18: warning: pointer is missing a nullability type specifier (_Nonnull, _Nullable, or _Null_unspecified) [-Wnullability-completeness]
+ 17010 |     VmaAllocation* pAllocation,
+       |                  ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17010:18: note: insert '_Nullable' if the pointer may be null
+ 17010 |     VmaAllocation* pAllocation,
+       |                  ^
+       |                    _Nullable
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17010:18: note: insert '_Nonnull' if the pointer should never be null
+ 17010 |     VmaAllocation* pAllocation,
+       |                  ^
+       |                    _Nonnull
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17011:22: warning: pointer is missing a nullability type specifier (_Nonnull, _Nullable, or _Null_unspecified) [-Wnullability-completeness]
+ 17011 |     VmaAllocationInfo* pAllocationInfo)
+       |                      ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17011:22: note: insert '_Nullable' if the pointer may be null
+ 17011 |     VmaAllocationInfo* pAllocationInfo)
+       |                      ^
+       |                        _Nullable
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/vma-src/include/vk_mem_alloc.h:17011:22: note: insert '_Nonnull' if the pointer should never be null
+ 17011 |     VmaAllocationInfo* pAllocationInfo)
+       |                      ^
+       |                        _Nonnull
+901 warnings generated.
+[672/746] Building CXX object CMakeFiles/pt_engine.dir/src/engine/ui/ffnt.cpp.o
+[673/746] Building CXX object CMakeFiles/pt_engine.dir/src/engine/ui/ui_batch.cpp.o
+[674/746] Building CXX object CMakeFiles/pt_engine.dir/src/engine/ui/lang_file.cpp.o
+[675/746] Building CXX object CMakeFiles/pt_engine.dir/src/engine/ui/uia.cpp.o
+[676/746] Building CXX object CMakeFiles/pt_engine.dir/src/engine/ui/uilb.cpp.o
+[677/746] Building CXX object CMakeFiles/pt_engine.dir/src/engine/ui/unicode_font.cpp.o
+[678/746] Building CXX object CMakeFiles/pt_engine.dir/src/engine/ui/uigb.cpp.o
+[679/746] Building CXX object CMakeFiles/pt_engine.dir/src/engine/vfx/vfx_schema.cpp.o
+[680/746] Building CXX object CMakeFiles/pt_engine.dir/src/engine/ui/unicode_font_harfbuzz.cpp.o
+[681/746] Building CXX object CMakeFiles/pt_engine.dir/src/engine/vfx/vfx_lensflare.cpp.o
+[682/746] Building CXX object CMakeFiles/pt_engine.dir/src/engine/ui/uif.cpp.o
+[683/746] Building CXX object CMakeFiles/pt_engine.dir/src/engine/xr/xr_host.cpp.o
+[684/746] Building CXX object CMakeFiles/pt_engine.dir/src/engine/voice/microphone.cpp.o
+[685/746] Building CXX object CMakeFiles/pt_engine.dir/src/engine/vfx/vfx_effect.cpp.o
+[686/746] Building CXX object CMakeFiles/pt_engine.dir/src/engine/vfx/vfx_file.cpp.o
+[687/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/archive.cpp.o
+[688/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/demo_stream.cpp.o
+[689/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/debug_panel.cpp.o
+[690/746] Building CXX object CMakeFiles/pt_engine.dir/src/engine/voice/voice_recognizer.cpp.o
+[691/746] Building CXX object CMakeFiles/pt_engine.dir/src/engine/vfx/vfx_system.cpp.o
+[692/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/archive_theater.cpp.o
+[693/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/game_controller.cpp.o
+[694/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/floor_level.cpp.o
+[695/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/game_plus_arm.cpp.o
+[696/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/game_objects.cpp.o
+[697/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/gimmick_animation.cpp.o
+[698/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/game_sound.cpp.o
+[699/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/demo_system.cpp.o
+[700/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/lua_entity.cpp.o
+[701/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/game.cpp.o
+[702/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/parameters.cpp.o
+[703/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/message_system.cpp.o
+[704/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/nazo.cpp.o
+[705/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/player.cpp.o
+[706/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/player_animation.cpp.o
+[707/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/prompt_textures.cpp.o
+[708/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/save_data.cpp.o
+[709/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/input_script.cpp.o
+[710/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/script_api.cpp.o
+[711/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/screen_effects.cpp.o
+[712/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/render_scene.cpp.o
+[713/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/script_bindings.cpp.o
+[714/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/script_host.cpp.o
+[715/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/stage_data.cpp.o
+[716/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/speedrun.cpp.o
+[717/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/trap_system.cpp.o
+[718/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/ui/archive_view.cpp.o
+[719/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/ui/pc_settings.cpp.o
+[720/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/stage_manager.cpp.o
+[721/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/ui/photo_preset.cpp.o
+[722/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/ui/demo_ui.cpp.o
+[723/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/ui/port_credits.cpp.o
+[724/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/ui/options_menu.cpp.o
+[725/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/ui/game_ui.cpp.o
+[726/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/ui/subliminal.cpp.o
+[727/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/ui/pc_settings_page.cpp.o
+[728/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/ui/photo_panel.cpp.o
+[729/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/ui/save_icon.cpp.o
+[730/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/ui/subtitle_player.cpp.o
+[731/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/ui/uia_player.cpp.o
+[732/746] Generating CXX dyndep file CMakeFiles/pt.dir/CXX.dd
+[733/746] Linking CXX static library _deps/adrenotools-build/libadrenotools.a
+[734/746] Building CXX object _deps/adrenotools-build/src/hook/CMakeFiles/hook_impl.dir/hook_impl.cpp.o
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/adrenotools/libadrenotools-8fae8ce254dfc1344527e05301e43f37dea2df80/src/hook/hook_impl.cpp:151:13: warning: missing field 'reserved_addr' initializer [-Wmissing-designated-field-initializers]
+  151 |             };
+      |             ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/adrenotools/libadrenotools-8fae8ce254dfc1344527e05301e43f37dea2df80/src/hook/hook_impl.cpp:211:9: warning: missing field 'id' initializer [-Wmissing-designated-field-initializers]
+  211 |         };
+      |         ^
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/build/android/_deps/adrenotools/libadrenotools-8fae8ce254dfc1344527e05301e43f37dea2df80/src/hook/hook_impl.cpp:220:9: warning: missing field 'flags' initializer [-Wmissing-designated-field-initializers]
+  220 |         };
+      |         ^
+3 warnings generated.
+[735/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/ui/ui_assets.cpp.o
+[736/746] Linking CXX shared library _deps/adrenotools-build/src/hook/libhook_impl.so
+[737/746] Building C object _deps/adrenotools-build/src/hook/CMakeFiles/main_hook.dir/main_hook.c.o
+[738/746] Linking CXX shared library _deps/adrenotools-build/src/hook/libmain_hook.so
+[739/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/ui/ui_icons.cpp.o
+[740/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/vr_play.cpp.o
+[741/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/ui/uif_view.cpp.o
+[742/746] Building CXX object CMakeFiles/pt_engine.dir/src/game/vfx_scene.cpp.o
+[743/746] Linking CXX static library libpt_engine.a
+[744/746] Building CXX object CMakeFiles/pt.dir/src/main.cpp.o
+/home/runner/work/P.T.-Android-Port/P.T.-Android-Port/src/main.cpp:537:68: warning: 'u8path<std::string, 0>' is deprecated [-Wdeprecated-declarations]
+  537 |             if (!line.empty()) files.emplace_back(std::filesystem::u8path(line));
+      |                                                                    ^
+/usr/local/lib/android/sdk/ndk/30.0.16248370/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/c++/v1/__filesystem/u8path.h:78:23: note: 'u8path<std::string, 0>' has been explicitly marked deprecated here
+   78 | _LIBCPP_HIDE_FROM_ABI _LIBCPP_DEPRECATED_WITH_CHAR8_T path u8path(const _Source& __s) {
+      |                       ^
+/usr/local/lib/android/sdk/ndk/30.0.16248370/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/c++/v1/__config:747:45: note: expanded from macro '_LIBCPP_DEPRECATED_WITH_CHAR8_T'
+  747 | #    define _LIBCPP_DEPRECATED_WITH_CHAR8_T _LIBCPP_DEPRECATED
+      |                                             ^
+/usr/local/lib/android/sdk/ndk/30.0.16248370/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/c++/v1/__config:694:49: note: expanded from macro '_LIBCPP_DEPRECATED'
+  694 | #      define _LIBCPP_DEPRECATED __attribute__((__deprecated__))
+      |                                                 ^
+1 warning generated.
+[745/746] Linking CXX shared library libmain.so
+stage: 71 shaders, 10 other assets, libmain.so 169.5 MB
