@@ -35,7 +35,7 @@ the APK contain no game data.
 
 ## Download and install
 
-1. Open the [Releases](../../releases) page and download `P.T.PC.Port-Android-arm64.apk` from the newest **P.T. Android Port build N**
+1. Open the [Releases](https://github.com/DrTron1c/pt-pc/releases) page and download `P.T.PC.Port-Android-arm64.apk` from the newest **P.T. Android Port build N**
    (builds are numbered by the CI run; the tag is `android-build-N`). Open the file and allow installs from the browser or file
    manager you used. Play Protect may warn about an app it does not know: it is a sideloaded build.
 2. Start the app. The first start asks for the game: choose the dump folder (or the two files themselves), or **Or choose a fake PKG**.
