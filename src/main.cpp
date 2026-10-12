@@ -2701,7 +2701,69 @@ public:
         return true;
     }
 
+    // The Android app's settings panel (PTActivity, SettingsPanel.java) writes the changes it wants as "name=number" lines in a file of
+    // the user data folder, the numbers being the row's value index. They are applied here through Set, as a tap on the page's own row
+    // would (so the picture changes at once and pt.ini keeps them), and the file is removed. True when there was a file.
+    bool ApplyAndroidChanges(const std::filesystem::path& file) {
+        std::ifstream in(file);
+        if (!in) return false;
+        std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        in.close();
+        std::error_code ec;
+        std::filesystem::remove(file, ec);
+        int applied = 0;
+        size_t begin = 0;
+        while (begin < text.size()) {
+            size_t end = text.find('\n', begin);
+            if (end == std::string::npos) end = text.size();
+            std::string line = text.substr(begin, end - begin);
+            begin = end + 1;
+            const size_t eq = line.find('=');
+            if (eq == std::string::npos) continue;
+            std::string name = line.substr(0, eq);
+            while (!name.empty() && (name.back() == ' ' || name.back() == '\t')) name.pop_back();
+            while (!name.empty() && (name.front() == ' ' || name.front() == '\t')) name.erase(name.begin());
+            int value = 0;
+            try {
+                value = std::stoi(line.substr(eq + 1));
+            } catch (...) {
+                continue;
+            }
+            if (ApplyAndroidChange(name, value)) ++applied;
+        }
+        pt::LogInfo("android settings: {} change(s) applied", applied);
+        return true;
+    }
+
 private:
+    bool ApplyAndroidChange(const std::string& name, int value) {
+        struct Entry {
+            const char* name;
+            int id;
+        };
+        const Entry entries[] = {
+            {"shadows", kShadowQuality},         {"ambient_occlusion", kRasterAo}, {"reflections", kRasterReflections},
+            {"texture_detail", kTextureDetail},  {"anisotropy", kAnisotropy},      {"bloom", kBloom},
+            {"depth_of_field", kDepthOfField},   {"motion_blur", kMotionBlur},     {"lens_distortion", kLensDistortion},
+            {"lens_ghosts", kLensGhosts},        {"film_grain", kFilmGrain},       {"clarity", kClarity},
+            {"vsync", kVsync},
+        };
+        if (name == "fps_limit") {
+            // any number of frames a second (the page's own row has a list), 0 for no limit
+            app_.settings.display.fps_limit = std::clamp(value, 0, 1000);
+            Save();
+            return true;
+        }
+        for (const Entry& e : entries) {
+            if (name == e.name) {
+                Set(e.id, value);
+                return true;
+            }
+        }
+        pt::LogWarn("android settings: unknown setting '{}'", name);
+        return false;
+    }
+
     enum RowId {
         kDisplayMode,
         kResolution,
@@ -4254,6 +4316,12 @@ int RunGame(App& app, pt::Vfs& vfs) {
         if (vr && !ending_outro) {
             vr->ApplyControls(game, polled, ui_ready && ui.MenuOpen(), vr->ScreenMode(game), dt);
         }
+#ifdef __ANDROID__
+        if (input.TakeTouchSettings()) {
+            // PTActivity.onUnhandledMessage (command 0x8001) puts the settings panel over the game
+            SDL_SendAndroidMessage(0x8001, 0);
+        }
+#endif
         if (polled.pc_settings && !freecam) {
             if (options.dev_ui && app.window) {
                 toggle_settings();
@@ -5187,6 +5255,14 @@ int RunGame(App& app, pt::Vfs& vfs) {
                 cache_saved = cache_now;
                 app.renderer.Context().SavePipelineCache("periodic");
             }
+            // the app's settings panel leaves its changes in a file (PcSettings::ApplyAndroidChanges); looked for twice a second
+            static auto changes_checked = std::chrono::steady_clock::now();
+            if (cache_now - changes_checked >= std::chrono::milliseconds(500)) {
+                changes_checked = cache_now;
+                if (const std::filesystem::path user = UserDataDir(); !user.empty()) {
+                    pc_settings.ApplyAndroidChanges(user / "android-settings.txt");
+                }
+            }
         }
 #endif
         // Every 10 s a status line (window, or PT_STATUS_LOG=1): frame rate, GPU time, device memory against the driver's budget,
@@ -5196,8 +5272,10 @@ int RunGame(App& app, pt::Vfs& vfs) {
             static auto status_start = std::chrono::steady_clock::now();
             static uint64_t status_frames = 0;
             static double status_gpu = 0.0;
+            static double status_pass[6] = {};
             ++status_frames;
             status_gpu += app.scene.Stats().gpu_ms;
+            for (int i = 0; i < 6; ++i) status_pass[i] += app.scene.Stats().pass_ms[i];
             const auto status_now = std::chrono::steady_clock::now();
             const double status_seconds = std::chrono::duration<double>(status_now - status_start).count();
             if (status_seconds >= 10.0) {
@@ -5214,17 +5292,22 @@ int RunGame(App& app, pt::Vfs& vfs) {
                     }
                 }
                 const VkExtent2D render_extent = app.renderer.RenderExtent();
+                const double frames_seen = static_cast<double>(std::max<uint64_t>(status_frames, 1));
                 pt::LogInfo("status: {:.0f} fps, gpu {:.2f} ms, vram {:.0f} of {:.0f} MB, {}x{}, upscaler {} {}, frame generation {}, vsync {}, "
-                            "fps limit {}, floor {}{}, ev {:.2f} exposure {:.5f} luminance {:.4f}, {} draws {} lights",
+                            "fps limit {}, floor {}{}, ev {:.2f} exposure {:.5f} luminance {:.4f}, {} draws {} lights, "
+                            "gpu ms: shadows {:.1f} mirror {:.1f} gbuffer {:.1f} lighting {:.1f} compose {:.1f} post {:.1f}",
                             status_frames / status_seconds, status_gpu / std::max<uint64_t>(status_frames, 1), used / 1048576.0,
                             budget / 1048576.0, render_extent.width, render_extent.height, app.settings.upscaling.upscaler,
                             app.settings.upscaling.quality, app.settings.upscaling.frame_generation,
                             app.settings.display.vsync ? "on" : "off", app.settings.display.fps_limit, game.Floor().CurrentFloorName(),
                             ui_ready && ui.MenuOpen() ? ", menu open" : "", app.scene.Stats().ev, app.scene.Stats().exposure,
-                            app.scene.Stats().luminance, app.scene.Stats().draws, app.scene.Stats().lights);
+                            app.scene.Stats().luminance, app.scene.Stats().draws, app.scene.Stats().lights,
+                            status_pass[0] / frames_seen, status_pass[1] / frames_seen, status_pass[2] / frames_seen,
+                            status_pass[3] / frames_seen, status_pass[4] / frames_seen, status_pass[5] / frames_seen);
                 status_start = status_now;
                 status_frames = 0;
                 status_gpu = 0.0;
+                for (double& pass : status_pass) pass = 0.0;
             }
         }
         if (app.window && !vr) {

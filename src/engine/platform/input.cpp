@@ -728,7 +728,12 @@ InputState InputDevice::Poll(bool keyboard_free, MouseUse mouse, bool pads_free)
         UsePrompts(PromptStyle{}, 0);
     }
     if (touch.pause) pause_edge_ = true;
+    // the touch overlay's SET button: Android has a settings panel of its own for it (PTActivity); other builds open the PC settings page
+#ifdef __ANDROID__
+    if (touch.settings) touch_settings_edge_ = true;
+#else
     if (touch.settings) settings_edge_ = true;
+#endif
     if (touch.touched) any_edge_ = true;
     state.voice_keyword_pressed |= touch.voice;
     key_pressed_since_poll_ = false;

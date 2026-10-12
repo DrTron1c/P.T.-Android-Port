@@ -204,6 +204,12 @@ public:
         out = touch_pointer_;
         return touch_pointer_valid_;
     }
+    // Android: the touch overlay's SET button was pressed since the last call (it opens the app's settings panel)
+    bool TakeTouchSettings() {
+        const bool pressed = touch_settings_edge_;
+        touch_settings_edge_ = false;
+        return pressed;
+    }
 
 private:
     struct Pad {
@@ -241,6 +247,7 @@ private:
     bool click_edge_ = false;
     bool right_click_edge_ = false;
     bool settings_edge_ = false;
+    bool touch_settings_edge_ = false;
     bool any_edge_ = false;
     bool last_from_gamepad_ = false;
     std::vector<bool> injected_keys_;

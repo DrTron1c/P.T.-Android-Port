@@ -108,9 +108,20 @@ The desktop settings are far too heavy for a tablet GPU at the tablet's own reso
   to the screen. The surface must be laid out `MATCH_PARENT`: SDL adds it without layout parameters, and a fixed-size surface that
   wraps its content is exactly that size, in a corner of the screen. Touches are scaled to the buffer's size (`FixedSurface.onTouch`),
   since SDL divides them by the surface size.
-- The first start of a build with `android-defaults-1` (a marker in `data/`) applies the Low graphics preset; the second icon,
-  "P.T. tools" (`ToolsActivity`), sets the picture size (SharedPreferences, read at the next start) and asks for Low / Medium /
-  Original (`data/android-quality.txt`, consumed by `ApplyDeviceDefaults` at the next start).
+- The first start of a build with `android-defaults-1` (a marker in `data/`) applies the Low graphics preset.
+- Settings (`SettingsPanel.java`): the touch overlay's SET button opens the panel over the running game (the game sends the Android
+  message `0x8001`, `PTActivity.onUnhandledMessage` shows it); the second icon, "P.T. tools", has the same panel above the log.
+  It has four presets (Fastest, Fast, Balanced, Original), the picture size, a frame rate limit, v-sync and each graphics option on
+  its own. A game setting goes to the game as a `name=number` line in `data/android-settings.txt` (the number is the row's value
+  index on the game's own settings page); the game looks for the file twice a second and applies each line through
+  `PcSettings::Set`, as a tap on that row would, so it acts at once and `pt.ini` keeps it (`PcSettings::ApplyAndroidChanges`). With
+  no game running the file waits for the next start. The picture size is SharedPreferences and takes effect at once
+  (`PTActivity.applyPictureSize` resizes the fixed surface; the game sees a window of the new size).
+- The frame rate limit is also given to Android as a hint (`Surface.setFrameRate`, Android 11 and newer) so the display runs at that
+  rate or a multiple of it: 45 frames a second on a screen that stays at 144 Hz are shown for 3 and 4 refreshes by turns, which is
+  choppy. The app is marked `appCategory="game"` for the system's game mode.
+- The `status:` line in `pt.log` ends with the GPU time of each part of the frame (shadows, mirror, gbuffer, lighting, compose,
+  post), also shown at the top of the settings panel.
 - The pipeline cache is written every 30 s, when the app goes to the background, and at shutdown (an Android app is usually ended
   without one, which left every start with a cold cache).
 - A suboptimal swapchain (`VK_SUBOPTIMAL_KHR`) does not rebuild the swapchain on Android. If the surface reports a rotated

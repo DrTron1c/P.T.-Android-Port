@@ -100,9 +100,22 @@ bool ApplyDeviceDefaults(AppSettings& settings, const std::filesystem::path& dat
     std::error_code ec;
     const std::filesystem::path request = data_dir / "android-quality.txt";
     const std::filesystem::path marker = data_dir / "android-defaults-1";
+    // The frame rate, once: a game held at 45 frames a second (and the screen asked to match, PTActivity) is smoother than one that
+    // runs as fast as the GPU allows, which on a 144 Hz screen shows frames for 3 and 4 refreshes by turns. Only for a pt.ini that
+    // has no limit; the settings panel changes it.
+    const std::filesystem::path pace_marker = data_dir / "android-defaults-2";
+    bool paced = false;
+    if (!std::filesystem::exists(pace_marker, ec)) {
+        if (settings.display.fps_limit == 0) {
+            settings.display.fps_limit = 45;
+            paced = true;
+            LogInfo("android: frame rate limit 45 (first start of this version)");
+        }
+        std::ofstream(pace_marker, std::ios::binary | std::ios::trunc) << "45\n";
+    }
     std::string wanted = ReadWord(request);
     const bool first = !std::filesystem::exists(marker, ec);
-    if (wanted.empty() && !first) return false;
+    if (wanted.empty() && !first) return paced;
     if (wanted.empty()) wanted = "low";
     if (wanted == "low") {
         ApplyGraphicsPreset(settings, GraphicsPreset::Low, false);
@@ -120,7 +133,7 @@ bool ApplyDeviceDefaults(AppSettings& settings, const std::filesystem::path& dat
     } else {
         LogWarn("android: unknown graphics preset '{}' in {}", wanted, request.string());
         std::filesystem::remove(request, ec);
-        return false;
+        return paced;
     }
     std::filesystem::remove(request, ec);
     std::ofstream(marker, std::ios::binary | std::ios::trunc) << wanted << "\n";

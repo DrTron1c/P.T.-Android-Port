@@ -20,6 +20,7 @@
         android:extractNativeLibs="true"
         android:largeHeap="true"
         android:requestLegacyExternalStorage="false"
+        android:appCategory="game"
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
 
         <!-- the launcher: checks for the game files, asks for them when they are missing, then starts the game -->
@@ -34,7 +35,7 @@
             </intent-filter>
         </activity>
 
-        <!-- the second icon: picture size, quality preset and the log (ToolsActivity.java) -->
+        <!-- the second icon: the settings (SettingsPanel.java) and the log (ToolsActivity.java) -->
         <activity
             android:name=".ToolsActivity"
             android:exported="true"
