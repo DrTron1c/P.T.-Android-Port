@@ -114,17 +114,17 @@ Everything else is the desktop game: the same loops, story, Museum and Game+. Th
 
 ## Status and known issues
 
-- **Tested hardware: one device**, a Snapdragon 8 Gen 2 (Adreno 740). Other Snapdragon generations, Mali, Immortalis and Tensor GPUs
-  are untried; the renderer's feature check names what a GPU lacks.
-- **Adreno 740 compute bug.** On that GPU compute shaders ran every work group but wrote only part of their output, which left the
-  picture dark in the lit hallway (the exposure meter read garbage) and, with the first upscaler, most of the screen black. The
-  exposure meter, the flashlight reflection and the upscaler now run as full-screen draws (build 27 and later). If the picture is
-  still very dark, open **Log > Share** and look for the `exposure` lines: they are what is needed.
-- **Speed.** The game is heavy for a mobile GPU; Low preset and a 1080-line picture are the defaults. The built-in upscaler and the
+- **Tested hardware: one device**, a Snapdragon 8 Gen 2 (Adreno 740), where the game, the menu and the touch controls run well. Other
+  Snapdragon generations, Mali, Immortalis and Tensor GPUs are untried; the renderer's feature check names what a GPU lacks.
+- **Adreno 740 compute bug (fixed).** On that GPU compute shaders ran every work group but wrote only part of their output, which left
+  the picture dark in the lit hallway (the exposure meter read garbage) and, with the first upscaler, most of the screen black. The
+  exposure meter, the flashlight reflection and the upscaler now run as full-screen draws (build 27 and later). On another GPU, if the
+  picture is still very dark, open **Log > Share** and look for the `exposure` lines: they are what is needed.
+- **Speed.** Mobile GPUs differ a lot; the Low preset and a 1080-line picture are the defaults. The built-in upscaler and the
   automatic picture size are experimental.
 - **Less tried:** the in-app updater (written from Android's documentation; the installer's confirmation page differs between
-  makers), the fPKG import (tested on synthetic packages and not on a real fPKG), the new touch HUD and menu sound on other
-  screens, and a full playthrough on Android (none reported yet; the desktop port's scripted walkthrough does not run here).
+  makers), the fPKG import (tested on synthetic packages and not on a real fPKG), the touch layout on other screen shapes, and a full
+  playthrough on Android (none reported yet; the desktop port's scripted walkthrough does not run here).
 
 More detail, with the diagnosis notes, is in [docs/android.md](docs/android.md).
 

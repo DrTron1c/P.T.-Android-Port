@@ -188,7 +188,7 @@ The desktop settings are far too heavy for a tablet GPU at the tablet's own reso
   version: on the tablet's Adreno 740 every compute work group ran, but only the top 128 rows of the picture it wrote arrived, so most of
   the screen was black; the engine's own luminance compute shader gave garbage on it too). It draws the scene at a fraction of the picture size (Quality is 2/3 of each side, Performance
   1/2), jittered, and rebuilds the full size picture from the last frames. It is off by default and the presets do not touch it. The compute version failed on the
-  tablet (above); the Draw version, the default, is the one still to be confirmed there. The game's own settings page
+  tablet (above); the Draw version, the default, has not been reported on yet. The game's own settings page
   (pause menu, PC settings) has the same Upscaler, Quality and Sharpness rows. If the picture goes wrong with it on, set Upscaler to Off.
   Settings > Upscaler > Upscaler test view (not kept in `pt.ini`; `PT_BUILTIN_VIEW` does the same at start) replaces the upscaled picture
   with one thing the shader reads: 1 Gradient (a pattern made from the pixel position alone), 2 Game picture (the render image as it
@@ -237,15 +237,15 @@ com.ptport.android cat files/pt-runtime/data/pt.log`; the APK is debuggable) and
 
 ## Status
 
-- **Tried on one device**, a Snapdragon 8 Gen 2 (Adreno 740): the app installs, imports the game, shows the menu and runs the game.
-  Other chips (Mali, Immortalis, Tensor, older or newer Snapdragons) are untried.
+- **Tried on one device**, a Snapdragon 8 Gen 2 (Adreno 740): the app installs, imports the game, shows the menu and runs the game, and
+  the owner reports that the game, the menu, the touch controls and the sound work well there. Other chips (Mali, Immortalis, Tensor,
+  older or newer Snapdragons) are untried.
 - Written without an NDK in reach: CI is the compiler of the Android code, and the touch code and the Android branches were
   syntax-checked on a desktop compiler. Java is reviewed by eye and compiled by CI.
 - **Adreno 740 compute shaders** gave half-written output (the dark picture, the black upscaler). The meter, the reflection colour and the
-  upscaler are full screen draws since build 27; the report that they fix it on the device is still to come. If the picture is dark, the
+  upscaler are full screen draws since build 27, and the picture is no longer dark on the device. If it is dark on another GPU, the
   `exposure` lines of the log are what to send.
-- Not confirmed yet on a device: the main menu of build 28 (look, flicker, text sizes, icon), the HUD picture of build 29 (drawing, hit areas,
-  the stick's travel), the menu's sound (levels, how often the creaks and footsteps come), the automatic picture size and the frame counter.
+- Not reported on yet: the built-in upscaler (experimental, off by default), the automatic picture size and the frame counter.
 - The updater is written from the Android documentation and not tried on every phone: the confirmation page of the installer on other
   makers' systems, a silent update (Android 12 and newer allow it only for an app that installed itself), the "Install unknown apps" flow.
 - The PKG import is tested on synthetic packages only, not on a real fPKG of P.T. or on a phone (speed, the storage provider's
