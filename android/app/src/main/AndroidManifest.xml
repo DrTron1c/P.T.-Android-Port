@@ -34,6 +34,18 @@
             </intent-filter>
         </activity>
 
+        <!-- the second icon: picture size, quality preset and the log (ToolsActivity.java) -->
+        <activity
+            android:name=".ToolsActivity"
+            android:exported="true"
+            android:label="P.T. tools"
+            android:theme="@android:style/Theme.Material.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".PTActivity"
             android:exported="false"

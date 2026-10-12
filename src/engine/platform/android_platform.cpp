@@ -4,6 +4,7 @@
 
 #include <SDL3/SDL.h>
 
+#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -13,6 +14,7 @@
 #include <vector>
 
 #include "engine/core/log.h"
+#include "engine/platform/graphics_presets.h"
 
 namespace pt::android {
 namespace {
@@ -82,9 +84,49 @@ bool CopyAsset(const Entry& entry, const std::filesystem::path& dir) {
     return ok;
 }
 
+std::string ReadWord(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    std::string word;
+    in >> word;
+    for (char& c : word) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return word;
+}
+
 }  // namespace
 
 std::filesystem::path RuntimeDir() { return g_runtime_dir; }
+
+bool ApplyDeviceDefaults(AppSettings& settings, const std::filesystem::path& data_dir) {
+    std::error_code ec;
+    const std::filesystem::path request = data_dir / "android-quality.txt";
+    const std::filesystem::path marker = data_dir / "android-defaults-1";
+    std::string wanted = ReadWord(request);
+    const bool first = !std::filesystem::exists(marker, ec);
+    if (wanted.empty() && !first) return false;
+    if (wanted.empty()) wanted = "low";
+    if (wanted == "low") {
+        ApplyGraphicsPreset(settings, GraphicsPreset::Low, false);
+    } else if (wanted == "original") {
+        ApplyGraphicsPreset(settings, GraphicsPreset::Original, false);
+    } else if (wanted == "medium") {
+        // the original's look with the costliest parts lighter: shadow maps a quarter of the size, none of the screen-wide effects
+        // that need extra passes at full size
+        ApplyGraphicsPreset(settings, GraphicsPreset::Original, false);
+        settings.graphics.shadow_quality = 2;
+        settings.graphics.depth_of_field = false;
+        settings.graphics.motion_blur = false;
+        settings.graphics.lens_distortion = false;
+        settings.graphics.lens_ghosts = false;
+    } else {
+        LogWarn("android: unknown graphics preset '{}' in {}", wanted, request.string());
+        std::filesystem::remove(request, ec);
+        return false;
+    }
+    std::filesystem::remove(request, ec);
+    std::ofstream(marker, std::ios::binary | std::ios::trunc) << wanted << "\n";
+    LogInfo("android: graphics preset {} ({})", wanted, first ? "first start of this version" : "asked for in the tools screen");
+    return true;
+}
 
 bool PrepareRuntime() {
     const char* base = SDL_GetAndroidInternalStoragePath();
@@ -136,6 +178,7 @@ namespace pt::android {
 
 std::filesystem::path RuntimeDir() { return {}; }
 bool PrepareRuntime() { return true; }
+bool ApplyDeviceDefaults(AppSettings&, const std::filesystem::path&) { return false; }
 
 }
 

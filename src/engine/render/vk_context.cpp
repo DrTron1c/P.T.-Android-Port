@@ -548,39 +548,50 @@ bool Context::Init(SDL_Window* window, bool validation, bool want_hdr) {
     return true;
 }
 
+bool Context::SavePipelineCache(const char* why) {
+    if (!device || !pipeline_cache || pipeline_cache_dir.empty()) return false;
+    const PipelineCreationStats created = PipelineStats(device);
+    const uint64_t count = created.graphics_count + created.compute_count;
+    // nothing new since the last write (a start whose pipelines all came from the file creates none); "shutdown" always writes
+    if (count == pipeline_cache_saved_count && std::strcmp(why, "shutdown") != 0) return false;
+    const auto start = std::chrono::steady_clock::now();
+    std::vector<uint8_t> data;
+    VkResult result;
+    {
+        std::lock_guard lock(PipelineCacheCreationMutex());
+        size_t size = 0;
+        result = vkGetPipelineCacheData(device, pipeline_cache, &size, nullptr);
+        if (result == VK_SUCCESS && size <= kMaxPipelineCacheBytes) {
+            data.resize(size);
+            result = vkGetPipelineCacheData(device, pipeline_cache, &size, data.data());
+            if (result == VK_SUCCESS) data.resize(size);
+        } else if (result == VK_SUCCESS) {
+            result = VK_ERROR_OUT_OF_HOST_MEMORY;
+            LogWarn("vulkan: pipeline cache is larger than 64 MiB; previous file kept");
+        }
+    }
+    if (result != VK_SUCCESS) {
+        LogWarn("vulkan: could not read pipeline cache ({})", vk::ResultName(result));
+        return false;
+    }
+    std::string status;
+    const PipelineCacheIdentity identity = PipelineCacheIdentityFor(properties);
+    const std::filesystem::path path = PipelineCacheFilePath(pipeline_cache_dir, identity);
+    if (!WritePipelineCacheFileAtomic(path, identity, data, status)) {
+        LogWarn("vulkan: pipeline cache not saved ({})", status);
+        return false;
+    }
+    pipeline_cache_saved_count = count;
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+    LogInfo("vulkan: pipeline cache saved {} bytes ({}, {} ms)", data.size(), why, elapsed);
+    return true;
+}
+
 void Context::Shutdown() {
     if (device) {
         vkDeviceWaitIdle(device);
         if (pipeline_cache) {
-            if (!pipeline_cache_dir.empty()) {
-                std::vector<uint8_t> data;
-                VkResult result;
-                {
-                    std::lock_guard lock(PipelineCacheCreationMutex());
-                    size_t size = 0;
-                    result = vkGetPipelineCacheData(device, pipeline_cache, &size, nullptr);
-                    if (result == VK_SUCCESS && size <= kMaxPipelineCacheBytes) {
-                        data.resize(size);
-                        result = vkGetPipelineCacheData(device, pipeline_cache, &size, data.data());
-                        if (result == VK_SUCCESS) data.resize(size);
-                    } else if (result == VK_SUCCESS) {
-                        result = VK_ERROR_OUT_OF_HOST_MEMORY;
-                        LogWarn("vulkan: pipeline cache is larger than 64 MiB; previous file kept");
-                    }
-                }
-                if (result == VK_SUCCESS) {
-                    std::string status;
-                    const PipelineCacheIdentity identity = PipelineCacheIdentityFor(properties);
-                    const std::filesystem::path path = PipelineCacheFilePath(pipeline_cache_dir, identity);
-                    if (WritePipelineCacheFileAtomic(path, identity, data, status)) {
-                        LogInfo("vulkan: pipeline cache saved {} bytes", data.size());
-                    } else {
-                        LogWarn("vulkan: pipeline cache not saved ({})", status);
-                    }
-                } else {
-                    LogWarn("vulkan: could not read pipeline cache ({})", vk::ResultName(result));
-                }
-            }
+            SavePipelineCache("shutdown");
             const PipelineCreationStats stats = PipelineStats(device);
             LogInfo("vulkan: pipeline creation took {:.2f} s ({} graphics, {} compute)", stats.duration_ns / 1.0e9,
                     stats.graphics_count, stats.compute_count);

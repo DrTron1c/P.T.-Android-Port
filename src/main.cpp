@@ -3359,6 +3359,9 @@ bool PumpEvents(App& app, pt::InputDevice* input, bool& running, pt::KeyPressLat
             }
         } else if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
             app.renderer.Resize(static_cast<uint32_t>(event.window.data1), static_cast<uint32_t>(event.window.data2));
+        } else if (event.type == SDL_EVENT_WILL_ENTER_BACKGROUND || event.type == SDL_EVENT_DID_ENTER_BACKGROUND) {
+            // the system may end the process while the app is in the background: what the pipeline cache holds is written now
+            app.renderer.Context().SavePipelineCache("background");
         }
     }
     if (SDL_GetWindowFlags(app.window) & SDL_WINDOW_MINIMIZED) {
@@ -5173,6 +5176,17 @@ int RunGame(App& app, pt::Vfs& vfs) {
                 }
             }
         }
+#ifdef __ANDROID__
+        {
+            // Android ends an app without a shutdown, so the pipeline cache would never be written: it is written here while it grows
+            static auto cache_saved = std::chrono::steady_clock::now();
+            const auto cache_now = std::chrono::steady_clock::now();
+            if (cache_now - cache_saved >= std::chrono::seconds(30)) {
+                cache_saved = cache_now;
+                app.renderer.Context().SavePipelineCache("periodic");
+            }
+        }
+#endif
         // Every 10 s a status line (window, or PT_STATUS_LOG=1): frame rate, GPU time, device memory against the driver's budget,
         // the render size, upscaler, frame generation, v-sync and floor, so a tester's log shows the state before a crash
         static const bool status_log = app.window || std::getenv("PT_STATUS_LOG") != nullptr;
@@ -5579,6 +5593,12 @@ int main(int argc, char** argv) {
                         : (options.headless && !headless_user_data) ? std::filesystem::path()
                                                                     : UserDataDir() / "pt.ini";
     const bool settings_loaded = !app.settings_path.empty() && pt::LoadAppSettings(app.settings_path, app.settings);
+#ifdef __ANDROID__
+    // the graphics settings fitted to a tablet GPU, at the first start and when the tools screen asked for a preset (android_platform.h)
+    if (!options.headless && !app.settings_path.empty() && pt::android::ApplyDeviceDefaults(app.settings, UserDataDir())) {
+        pt::SaveAppSettings(app.settings_path, app.settings);
+    }
+#endif
     if (!options.headless) {
         if (!settings_loaded) {
             pt::SaveAppSettings(app.settings_path, app.settings);

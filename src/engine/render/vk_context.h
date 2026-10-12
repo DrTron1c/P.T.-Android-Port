@@ -62,6 +62,10 @@ class Context {
 public:
     bool Init(SDL_Window* window, bool validation, bool want_hdr = false);
     void Shutdown();
+    // Writes the pipeline cache to its file now. Shutdown does it, but a phone or tablet app is usually ended by the system without
+    // a shutdown, which left every start with a cold cache (hundreds of pipeline compiles as stutter). Returns false when there is
+    // nothing new to write (no cache folder, or no pipeline created since the last write).
+    bool SavePipelineCache(const char* why);
 
     bool CreateSwapchain(uint32_t width, uint32_t height, bool vsync, bool want_hdr = false);
     void DestroySwapchain();
@@ -87,6 +91,8 @@ public:
     VkDevice device = VK_NULL_HANDLE;
     VkPipelineCache pipeline_cache = VK_NULL_HANDLE;
     std::filesystem::path pipeline_cache_dir;
+    // graphics + compute pipelines the cache file held when it was last read or written
+    uint64_t pipeline_cache_saved_count = 0;
     uint32_t queue_family = 0;
     VkQueue queue = VK_NULL_HANDLE;
     VmaAllocator allocator = nullptr;

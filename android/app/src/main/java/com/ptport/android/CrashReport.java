@@ -119,6 +119,7 @@ final class CrashReport {
     static String build(Context context, Pending pending) {
         StringBuilder out = new StringBuilder(16384);
         ApplicationExitInfo info = pending.info;
+        out.append("P.T. PC Port crash report\n");
         try {
             header(context, out);
         } catch (Throwable t) {
@@ -133,6 +134,11 @@ final class CrashReport {
             gameFiles(context, out);
         } catch (Throwable t) {
             out.append("(game files: ").append(t).append(")\n");
+        }
+        try {
+            out.append(frameRate(context));
+        } catch (Throwable t) {
+            out.append("(frame rate: ").append(t).append(")\n");
         }
         try {
             String tombstone = tombstone(info);
@@ -167,7 +173,6 @@ final class CrashReport {
 
     private static void header(Context context, StringBuilder out) throws Exception {
         PackageInfo app = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
-        out.append("P.T. PC Port crash report\n");
         out.append("app: ").append(app.versionName).append(" (build ").append(app.getLongVersionCode()).append(")\n");
         out.append("device: ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL).append(" (").append(Build.DEVICE).append(")\n");
         out.append("android: ").append(Build.VERSION.RELEASE).append(" (API ").append(Build.VERSION.SDK_INT).append("), ")
@@ -231,6 +236,91 @@ final class CrashReport {
             } catch (IOException ignored) {
             }
         }
+    }
+
+    /** The log screen's text: no crash, just how the game is doing (device, settings, frame rate, the log). Not for the main thread. */
+    static String buildLog(Context context) {
+        StringBuilder out = new StringBuilder(12288);
+        out.append("P.T. PC Port log\n");
+        try {
+            header(context, out);
+        } catch (Throwable t) {
+            out.append("(header: ").append(t).append(")\n");
+        }
+        try {
+            gameFiles(context, out);
+        } catch (Throwable t) {
+            out.append("(game files: ").append(t).append(")\n");
+        }
+        try {
+            out.append(settingsSummary(context));
+        } catch (Throwable t) {
+            out.append("(settings: ").append(t).append(")\n");
+        }
+        try {
+            out.append(frameRate(context));
+        } catch (Throwable t) {
+            out.append("(frame rate: ").append(t).append(")\n");
+        }
+        try {
+            String log = gameLog(context);
+            out.append("\n== pt.log (the game's own log) ==\n").append(log.isEmpty() ? "(none yet: the game has not been started)\n" : log);
+        } catch (Throwable t) {
+            out.append("\n== pt.log ==\n(could not read it: ").append(t).append(")\n");
+        }
+        return out.toString();
+    }
+
+    /** The graphics-related part of pt.ini, without its comments. */
+    private static String settingsSummary(Context context) throws IOException {
+        File file = new File(context.getFilesDir(), "pt-runtime/data/pt.ini");
+        if (!file.isFile()) return "";
+        StringBuilder out = new StringBuilder("\n== settings (pt.ini) ==\n");
+        String section = "";
+        for (String line : new String(readAll(file, 65536), UTF8).split("\r?\n")) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty() || trimmed.startsWith(";") || trimmed.startsWith("#")) continue;
+            if (trimmed.startsWith("[")) {
+                section = trimmed;
+                continue;
+            }
+            if (section.equals("[display]") || section.equals("[upscaling]") || section.equals("[graphics]")
+                    || section.equals("[raytracing]")) {
+                out.append(section.substring(1, section.length() - 1)).append('.').append(trimmed).append('\n');
+            }
+        }
+        File preset = new File(context.getFilesDir(), "pt-runtime/data/android-defaults-1");
+        if (preset.isFile()) out.append("android preset applied: ").append(new String(readAll(preset, 64), UTF8).trim()).append('\n');
+        return out.toString();
+    }
+
+    /** The game's status lines ("status: 24 fps, gpu 31.2 ms, ..., 1620x1080, ..."), one per 10 seconds of play: the last ones. */
+    private static String frameRate(Context context) throws IOException {
+        File file = new File(context.getFilesDir(), "pt-runtime/data/pt.log");
+        if (!file.isFile()) return "";
+        RandomAccessFile in = new RandomAccessFile(file, "r");
+        String text;
+        try {
+            long size = in.length();
+            long start = Math.max(0, size - 524288);
+            byte[] bytes = new byte[(int) (size - start)];
+            in.seek(start);
+            in.readFully(bytes);
+            text = new String(bytes, UTF8);
+        } finally {
+            in.close();
+        }
+        ArrayDeque<String> lines = new ArrayDeque<String>();
+        for (String line : text.split("\r?\n")) {
+            if (line.contains(" status: ")) {
+                lines.add(cut(line, 260));
+                if (lines.size() > 16) lines.removeFirst();
+            }
+        }
+        StringBuilder out = new StringBuilder("\n== frame rate (a line every 10 seconds of play) ==\n");
+        if (lines.isEmpty()) out.append("(none: the game has not run for 10 seconds)\n");
+        for (String line : lines) out.append(line).append('\n');
+        return out.toString();
     }
 
     // ----------------------------------------------------------------------------------------------------------------
