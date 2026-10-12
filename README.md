@@ -19,7 +19,7 @@ the APK contain no game data.
 
 | Main menu | In game with touch controls |
 |---|---|
-| <img src="docs/media/android/main-menu.jpg" alt="The main menu: the P.T. logo, Start, New game, Load save and Settings over the hallway, with the bulb flickering" width="100%"> | <img src="docs/media/android/in-game-controls.jpg" alt="The hallway in game, with the JACK, SET, II, X, ZOOM and ACT touch buttons and the walk stick" width="100%"> |
+| <img src="docs/media/android/main-menu.jpg" alt="The main menu: the P.T. logo, Start, New game, Load save and Settings over the hallway, with the bulb flickering" width="100%"> | <img src="docs/media/android/in-game-controls.jp" alt="The hallway in game, with the JACK, SET, II, X, ZOOM and ACT touch buttons and the walk stick" width="100%"> |
 
 [Download](#download-and-install) · [What you need](#what-you-need) · [Controls](#controls) · [Features](#features) ·
 [Status](#status-and-known-issues) · [Reporting a problem](#reporting-a-problem) · [Building](#building) · [Credits](#credits-and-legal)
