@@ -194,7 +194,7 @@ public class SavesActivity extends ThemedActivity {
             list.addView(row);
         }
         View end = new View(this);
-        list.addView(end, new LinearLayout.LayoutParams(1, MenuStyle.dp(this, 30)));
+        list.addView(end, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, MenuStyle.dp(this, 30)));
     }
 
     private View action(String label, View.OnClickListener listener) {

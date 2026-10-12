@@ -96,8 +96,12 @@ public class MenuActivity extends ThemedActivity {
         int screenWidth = getResources().getDisplayMetrics().widthPixels;
         int side = Math.max(MenuStyle.dp(this, 32), (int) (screenWidth * 0.09f));
 
+        // A vertical LinearLayout that wraps its content takes the width of its widest child that does not fill the parent: with every
+        // child filling it and a spacer of a fixed width, the column was 1 pixel wide and nothing showed (build 16). The spacers fill the
+        // parent too, and the column has a width of its own to start from.
         LinearLayout column = new LinearLayout(this);
         column.setOrientation(LinearLayout.VERTICAL);
+        column.setMinimumWidth(MenuStyle.dp(this, 320));
 
         TextView title = MenuStyle.text(this, "P.T. PC PORT", 40, MenuStyle.INK, true);
         title.setLetterSpacing(0.28f);
@@ -130,7 +134,7 @@ public class MenuActivity extends ThemedActivity {
         });
         column.addView(fresh);
         View freshGap = new View(this);
-        column.addView(freshGap, new LinearLayout.LayoutParams(1, MenuStyle.dp(this, 14)));
+        column.addView(freshGap, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, MenuStyle.dp(this, 14)));
 
         MenuStyle.Entry load = new MenuStyle.Entry(this, "Load save", 30);
         load.setOnClickListener(new View.OnClickListener() {
@@ -141,7 +145,7 @@ public class MenuActivity extends ThemedActivity {
         });
         column.addView(load);
         View gap = new View(this);
-        column.addView(gap, new LinearLayout.LayoutParams(1, MenuStyle.dp(this, 14)));
+        column.addView(gap, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, MenuStyle.dp(this, 14)));
 
         MenuStyle.Entry settings = new MenuStyle.Entry(this, "Settings", 30);
         settings.setOnClickListener(new View.OnClickListener() {
