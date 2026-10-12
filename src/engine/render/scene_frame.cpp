@@ -1705,6 +1705,13 @@ void SceneRenderer::RecordLuminance(VkCommandBuffer cmd) {
     }
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, luminance_);
     BindSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE);
+    // the counters after the sums start at zero (luminance.comp adds into them); the slot's last frame has been read by now
+    if (slot.luminance.mapped) {
+        const VkDeviceSize offset = sizeof(glm::vec2) * gpu::kLuminanceEntries;
+        const VkDeviceSize bytes = sizeof(uint32_t) * gpu::kLuminanceDiagEntries;
+        std::memset(static_cast<char*>(slot.luminance.mapped) + offset, 0, static_cast<size_t>(bytes));
+        vmaFlushAllocation(renderer_->Context().allocator, slot.luminance.allocation, offset, bytes);
+    }
     gpu::PassPush push;
     // the most a pixel adds to the mean (SceneRenderer::LuminanceCeiling), and where a pixel counts as bright for the log
     const float ceiling = LuminanceCeiling();
@@ -2546,6 +2553,14 @@ void SceneRenderer::SettleExposure(const ExposureSettings& settings) {
     }
     if (!std::isfinite(exposure_) || exposure_ <= 0.0f) {
         exposure_ = ExposureFor(ev_, settings) * renderer_->exposure;
+    }
+    const LuminanceDiag diag = ReadLuminanceDiag(slot);
+    LogLuminanceDiag(diag, count, unusable, slot.luminance_groups);
+    const double rejected = static_cast<double>(diag.non_finite) + static_cast<double>(diag.huge);
+    if (count + rejected > 2000.0 && rejected > count) {
+        LogWarn("scene renderer: exposure not measured: {} lit pixels were left out against {} counted, ev stays {:.2f}", static_cast<uint64_t>(rejected),
+                static_cast<uint64_t>(count), ev_);
+        return;
     }
     if (count <= 0.0) {
         LogInfo("scene renderer: exposure not measured (no lit pixels counted; {} of {} luminance partials unusable), ev {:.2f}, {} draws", unusable,

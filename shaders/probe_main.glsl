@@ -84,6 +84,9 @@ void main() {
     }
     vec3 N = DecodeNormal(ImgFetch(IMG_NORMAL, pixel).xyz);
     vec3 e = SphereMapLookup(p, v, N) * v.exposure.x;
+    if (!IsFiniteBits(e)) {
+        e = vec3(0.0);
+    }
 #ifdef PT_RT_AO
     e *= imageLoad(rt_ao, pixel).x;
 #endif

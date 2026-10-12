@@ -19,7 +19,8 @@ layout(location = 1) out vec4 out_specular;
 vec3 Encode(vec4 acc) {
     float t = clamp(acc.a, 0.0, 1.0);
     float coverage = 1.0 - (t <= 0.89990234 ? t : 1.0);
-    return coverage > 0.0 ? acc.rgb / coverage : vec3(0.0);
+    vec3 e = coverage > 0.0 ? acc.rgb / coverage : vec3(0.0);
+    return IsFiniteBits(e) ? e : vec3(0.0);
 }
 
 void main() {

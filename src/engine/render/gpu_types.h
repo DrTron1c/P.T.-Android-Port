@@ -17,6 +17,8 @@ constexpr uint32_t kInvalid = 0xFFFFFFFFu;
 constexpr uint32_t kLuminanceGroups = 16384;
 constexpr uint32_t kReflectionReadback = kLuminanceGroups;
 constexpr uint32_t kLuminanceEntries = kLuminanceGroups + 2;
+// after the vec2 entries: counters for the log (luminance.comp)
+constexpr uint32_t kLuminanceDiagEntries = 32;
 
 enum ViewKind : uint32_t { kViewCamera = 0, kViewSpotShadow = 1, kViewParaboloid = 2 };
 

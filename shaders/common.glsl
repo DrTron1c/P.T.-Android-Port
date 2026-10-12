@@ -228,6 +228,17 @@ vec3 DecodeNormal(vec3 g) {
     return vec3(xy, z);
 }
 
+// True for a finite value. A comparison with a NaN or an infinity is not reliable on every GPU: Vulkan leaves their behaviour open
+// unless a shader asks for it, and Adreno's compiler takes a value for a finite one, so "x < 60000.0" kept a NaN. The exponent's bits
+// do not depend on that.
+bool IsFiniteBits(float x) {
+    return (floatBitsToUint(x) & 0x7F800000u) != 0x7F800000u;
+}
+
+bool IsFiniteBits(vec3 v) {
+    return IsFiniteBits(v.x) && IsFiniteBits(v.y) && IsFiniteBits(v.z);
+}
+
 float Luma709(vec3 c) {
     return dot(c, vec3(0.21252441, 0.71533203, 0.07208252));
 }

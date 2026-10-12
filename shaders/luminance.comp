@@ -11,11 +11,18 @@ layout(push_constant) uniform PassPush {
     mat4 m;
 } pass;
 
+// The slot's luminance buffer: kLuminanceEntries (16386) vec2, the partial sums, of which the last two are the flashlight
+// reflection's (reflect_colour.comp), then kLuminanceDiagEntries (32) counters for the log. The counters are zeroed by the CPU before
+// the dispatch: 0 pixels without depth, 1 non-finite, 2 over 60000, 3 black, 4 the albedo's luma x 1024 summed; 8 and on three
+// sample pixels (centre, left, right): depth, diffuse rgb, albedo rgb, specular r, as float bits.
 layout(std430, set = 1, binding = 5) buffer LuminanceOut {
-    vec2 partial[];
+    vec2 partial[16386];
+    uint diag[];
 };
 
 shared vec2 s_sum[256];
+shared uvec4 s_cnt[256];
+shared uint s_alb[256];
 
 void main() {
     // pass.f0.x: a ceiling for one pixel's share of the mean (0 for none); pass.f0.y: pixels brighter than this are counted as bright
@@ -25,37 +32,79 @@ void main() {
     ivec2 size = ivec2(ImgSize(IMG_DIFFUSE));
     ivec2 base = ivec2(gl_GlobalInvocationID.xy) * 2;
     vec2 acc = vec2(0.0);
+    uvec4 cnt = uvec4(0u);
+    uint alb = 0u;
+    const vec2 samples[3] = vec2[3](vec2(0.5, 0.5), vec2(0.25, 0.5), vec2(0.75, 0.5));
     for (int y = 0; y < 2; ++y) {
         for (int x = 0; x < 2; ++x) {
             ivec2 p = base + ivec2(x, y);
-            if (all(lessThan(p, size))) {
-                float depth = ImgFetch(IMG_DEPTH, p).x;
-                if (depth > 0.0) {
-                    float luma = Luma709(ImgFetch(IMG_DIFFUSE, p).rgb);
-                    // The lit image holds half floats: one pixel with a NaN or an infinity (a GPU that divides by zero where the
-                    // desktop's gives a finite value) would turn the whole sum, and with it the exposure, into a NaN, and every lit
-                    // surface of the frame black. A comparison with a NaN is false, so this keeps the finite values only.
-                    if (luma < 60000.0) {
-                        // A few pixels far brighter than the picture (the lamp's glass beside its bulb) would otherwise set the mean, and
-                        // so the exposure, for the whole picture: the room goes black around a lamp that is lit.
-                        const float used = ceiling > 0.0 ? min(luma, ceiling) : luma;
-                        acc += vec2(max(0.0, used), luma > threshold ? 2049.0 : 1.0);
-                    }
+            if (!all(lessThan(p, size))) {
+                continue;
+            }
+            float depth = ImgFetch(IMG_DEPTH, p).x;
+            for (int k = 0; k < 3; ++k) {
+                if (all(equal(p, ivec2(vec2(size) * samples[k])))) {
+                    vec4 d = ImgFetch(IMG_DIFFUSE, p);
+                    vec4 a = ImgFetch(IMG_ALBEDO, p);
+                    uint o = 8u + uint(k) * 8u;
+                    diag[o + 0u] = floatBitsToUint(depth);
+                    diag[o + 1u] = floatBitsToUint(d.r);
+                    diag[o + 2u] = floatBitsToUint(d.g);
+                    diag[o + 3u] = floatBitsToUint(d.b);
+                    diag[o + 4u] = floatBitsToUint(a.r);
+                    diag[o + 5u] = floatBitsToUint(a.g);
+                    diag[o + 6u] = floatBitsToUint(a.b);
+                    diag[o + 7u] = floatBitsToUint(ImgFetch(IMG_SPECULAR, p).r);
                 }
+            }
+            if (!(depth > 0.0)) {
+                cnt.x += 1u;
+                continue;
+            }
+            // The lit image holds half floats: a pixel with a NaN or an infinity (a GPU that divides by zero where the desktop's gives a
+            // finite value) would turn the whole sum, and with it the exposure, into a NaN. Such a pixel is left out and counted.
+            vec3 lit = ImgFetch(IMG_DIFFUSE, p).rgb;
+            if (!IsFiniteBits(lit)) {
+                cnt.y += 1u;
+                continue;
+            }
+            float luma = Luma709(lit);
+            if (luma >= 60000.0) {
+                cnt.z += 1u;
+                continue;
+            }
+            if (luma < 1.0e-4) {
+                cnt.w += 1u;
+            }
+            // A few pixels far brighter than the picture would otherwise set the mean, and so the exposure, for the whole picture.
+            const float used = ceiling > 0.0 ? min(luma, ceiling) : luma;
+            acc += vec2(max(0.0, used), luma > threshold ? 2049.0 : 1.0);
+            vec3 albedo = ImgFetch(IMG_ALBEDO, p).rgb;
+            if (IsFiniteBits(albedo)) {
+                alb += uint(clamp(Luma709(albedo), 0.0, 1.0) * 1024.0);
             }
         }
     }
     uint index = gl_LocalInvocationIndex;
     s_sum[index] = acc;
+    s_cnt[index] = cnt;
+    s_alb[index] = alb;
     barrier();
     for (uint stride = 128u; stride > 0u; stride >>= 1u) {
         if (index < stride) {
             s_sum[index] += s_sum[index + stride];
+            s_cnt[index] += s_cnt[index + stride];
+            s_alb[index] += s_alb[index + stride];
         }
         barrier();
     }
     if (index == 0u) {
         uint group = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
         partial[group] = s_sum[0];
+        atomicAdd(diag[0], s_cnt[0].x);
+        atomicAdd(diag[1], s_cnt[0].y);
+        atomicAdd(diag[2], s_cnt[0].z);
+        atomicAdd(diag[3], s_cnt[0].w);
+        atomicAdd(diag[4], s_alb[0]);
     }
 }

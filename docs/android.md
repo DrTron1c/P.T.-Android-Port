@@ -96,15 +96,17 @@ How a platform piece differs from the Windows and Linux ones:
 | Vulkan | the system's `libvulkan.so` through volk; the headers are fetched at volk's version (the NDK's are older) |
 | input | touch overlay in `platform/touch_controls.cpp`; SDL's mouse made of a touch is ignored in play and is the menus' pointer |
 | audio flush to zero | FPCR.FZ, as on Apple silicon |
-| exposure meter | the mean of the lit picture (`luminance.comp`) takes at most 2.0 from one pixel (`SceneRenderer::LuminanceCeiling`, `PT_EV_CEILING` changes it, 0 is the desktop's no limit) |
+| exposure meter | `luminance.comp` reads the lit picture's mean with bit-level checks for NaN and infinity (Adreno's compiler does not keep them out of a comparison), limits one pixel to 2.0 of it (`SceneRenderer::LuminanceCeiling`, `PT_EV_CEILING` changes it, 0 is the desktop's no limit), and counts the pixels it left out |
 
-The exposure meter's ceiling is there because of one lamp. The hallway's ceiling lamp lit its own glass so brightly that a few
-dozen pixels set the mean of the whole picture: the exposure stayed at its darkest (EV -10, 0.00019) with a lit room, the picture
-black around a glowing lamp, until the camera happened to look where the lamp's glass was dimmer. The ceiling keeps those pixels
-from counting for more than a bright pixel (the bloom already sees the picture clamped to 1, so a lamp left white and over-exposed
-looks as it did). pt.log has an `exposure meter:` line every two seconds (the reading, the share of pixels over the ceiling, the
-exposure it was taken at, the EV it aims for, the lights and shadow views), the `status:` line has the share too, and the log
-screen shows the meter lines.
+The exposure meter, the picture that stayed black. In the first Android logs the exposure sat at its darkest (EV -10, 0.00019) in a lit
+room, the picture black around the glowing lamp, and the meter's reading did not follow the exposure: about 0.3 at 0.007 and at
+0.00019 alike, over a few percent of the pixels (a hallway view should count nearly all of them). The cause is not found yet. What
+the code does now: pixels with a NaN or an infinity are left out by their bits and counted; a light's or a probe's NaN is left out
+of the pixel instead of turning it black (`light_main.glsl`, `probe_main.glsl`, `probe_resolve.frag`); when more lit pixels are left
+out than counted, the EV stays where it is. pt.log has three `exposure ...` lines every two seconds (the reading, the exposure it was
+taken at and the EV it aims for; the counts of pixels without depth, non-finite, over 60000, black and valid, with the albedo's mean
+and the partials that were unusable; the depth, lit value and albedo of the centre, left and right pixels), and the log screen
+shows them.
 
 ## Building
 

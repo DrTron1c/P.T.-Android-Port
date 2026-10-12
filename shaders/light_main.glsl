@@ -44,6 +44,14 @@ void main() {
     if (!EvaluateLight(l, v, s, pass.ids.z != 0u, gl_FragCoord.xy, diffuse, specular)) {
         discard;
     }
+    // One light's NaN or infinity would stay in the pixel (the lights add into it) and the pixel would come out black: that light is left
+    // out of the pixel instead (a division by zero on a GPU that does not give the desktop's finite value)
+    if (!IsFiniteBits(diffuse)) {
+        diffuse = vec3(0.0);
+    }
+    if (!IsFiniteBits(specular)) {
+        specular = vec3(0.0);
+    }
     out_diffuse = vec4(diffuse, 1.0);
     out_specular = vec4(specular, 1.0);
 }

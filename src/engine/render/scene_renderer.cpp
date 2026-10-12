@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <format>
 #include <fstream>
 
 #include "engine/assets/ftex.h"
@@ -146,7 +147,8 @@ bool SceneRenderer::Init(Renderer& renderer, TextureManager& textures) {
     for (FrameSlot& slot : slots_) {
         ctx.CreateBuffer(slot.frame_data, sizeof(gpu::FrameData), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true);
         ctx.CreateBuffer(slot.skin, sizeof(glm::mat4) * gpu::kMaxSkinMatrices, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true);
-        ctx.CreateBuffer(slot.luminance, sizeof(glm::vec2) * gpu::kLuminanceEntries, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true);
+        ctx.CreateBuffer(slot.luminance, sizeof(glm::vec2) * gpu::kLuminanceEntries + sizeof(uint32_t) * gpu::kLuminanceDiagEntries,
+                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true);
         VkQueryPoolCreateInfo query{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
         query.queryType = VK_QUERY_TYPE_TIMESTAMP;
         query.queryCount = kTimestamps;
@@ -1269,6 +1271,39 @@ uint32_t SceneRenderer::SumLuminance(const FrameSlot& slot, double& sum, double&
     return unusable;
 }
 
+SceneRenderer::LuminanceDiag SceneRenderer::ReadLuminanceDiag(const FrameSlot& slot) const {
+    LuminanceDiag out;
+    if (!slot.luminance.mapped) {
+        return out;
+    }
+    const uint32_t* words = reinterpret_cast<const uint32_t*>(static_cast<const char*>(slot.luminance.mapped) +
+                                                              sizeof(glm::vec2) * gpu::kLuminanceEntries);
+    out.no_depth = words[0];
+    out.non_finite = words[1];
+    out.huge = words[2];
+    out.black = words[3];
+    out.albedo = words[4];
+    for (uint32_t k = 0; k < 3; ++k) {
+        for (uint32_t i = 0; i < 8; ++i) {
+            std::memcpy(&out.samples[k][i], &words[8 + k * 8 + i], sizeof(float));
+        }
+    }
+    return out;
+}
+
+void SceneRenderer::LogLuminanceDiag(const LuminanceDiag& diag, double valid, uint32_t unusable, uint32_t groups) const {
+    const double albedo_mean = valid > 0.0 ? diag.albedo / 1024.0 / valid : 0.0;
+    LogInfo("exposure pixels: no depth {}, non-finite {}, over 60000 {}, black {}, valid {}, albedo mean {:.2f}, partials unusable {} of {}", diag.no_depth,
+            diag.non_finite, diag.huge, diag.black, static_cast<uint64_t>(valid), albedo_mean, unusable, groups);
+    static const char* names[3] = {"centre", "left", "right"};
+    std::string text;
+    for (uint32_t k = 0; k < 3; ++k) {
+        const float* v = diag.samples[k];
+        text += std::format("{} depth {:.4g} lit ({:.2e} {:.2e} {:.2e}) albedo ({:.2f} {:.2f} {:.2f}); ", names[k], v[0], v[1], v[2], v[3], v[4], v[5], v[6]);
+    }
+    LogInfo("exposure samples: {}", text);
+}
+
 void SceneRenderer::ReadMeasurements(FrameSlot& slot, float dt, const ExposureSettings& settings) {
     if (slot.timed) {
         ReadTimestamps(slot);
@@ -1310,7 +1345,21 @@ void SceneRenderer::ReadMeasurements(FrameSlot& slot, float dt, const ExposureSe
     }
     stats_.luminance = measured;
     stats_.bright = static_cast<float>(bright / count);
-    if (!adaptation_valid_ || !toggles.adaptation || !lighting_ || !lighting_->valid) {
+    const LuminanceDiag diag = ReadLuminanceDiag(slot);
+    const double rejected = static_cast<double>(diag.non_finite) + static_cast<double>(diag.huge);
+    // More lit pixels left out (a NaN, an infinity, or beyond a half float's reach) than counted: the reading is of the rest of the
+    // picture only, and a mean of the rest says nothing of how bright the picture is. The EV stays where it is.
+    const bool unreliable = (count + rejected > 2000.0 && rejected > count) || unusable * 4 > slot.luminance_groups;
+    if (unreliable) {
+        static auto last_held = std::chrono::steady_clock::time_point{};
+        const auto now = std::chrono::steady_clock::now();
+        if (now - last_held >= std::chrono::seconds(5)) {
+            last_held = now;
+            LogWarn("scene renderer: exposure held at ev {:.2f}: {} lit pixels were left out against {} counted ({} of {} partials unusable)", ev_,
+                    static_cast<uint64_t>(rejected), static_cast<uint64_t>(count), unusable, slot.luminance_groups);
+        }
+    }
+    if (!adaptation_valid_ || !toggles.adaptation || !lighting_ || !lighting_->valid || unreliable) {
         return;
     }
     // a NaN here would stay: the EV and with it the exposure would be one for good, and every lit surface black
@@ -1350,6 +1399,7 @@ void SceneRenderer::ReadMeasurements(FrameSlot& slot, float dt, const ExposureSe
                     "{} lights, {} shadow views",
                     measured, 100.0 * bright / count, count, LuminanceCeiling() > 0.0f ? LuminanceCeiling() : 2.0f, slot.exposure_used, ev_, target,
                     stats_.lights, stats_.shadow_views);
+            LogLuminanceDiag(diag, count, unusable, slot.luminance_groups);
         }
     }
 #endif

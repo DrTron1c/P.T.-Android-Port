@@ -340,7 +340,7 @@ final class CrashReport {
             if (line.contains(" status: ")) continue;
             if (matchesAny(line, renderer)) {
                 rendererLines.add(cut(line, LINE_CHARS));
-                if (rendererLines.size() > 22) rendererLines.removeFirst();
+                if (rendererLines.size() > 40) rendererLines.removeFirst();
             } else if (matchesAny(line, stage)) {
                 stageLines.add(cut(line, LINE_CHARS));
                 if (stageLines.size() > 8) stageLines.removeFirst();

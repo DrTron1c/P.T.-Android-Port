@@ -347,9 +347,19 @@ private:
     // negative or an impossible count: what a buffer the GPU did not write holds). Those are left out of the sums.
     uint32_t SumLuminance(const FrameSlot& slot, double& sum, double& count, double* bright = nullptr) const;
     void SettleExposure(const ExposureSettings& settings);
-    // The most one pixel adds to the exposure meter's mean (the lit picture after the exposure), 0 for no limit. Android has one: the
-    // first Android log held the exposure at its darkest for minutes with a lit room, the mean set by a few pixels of the lamp's glass.
-    // PT_EV_CEILING=<value> overrides it (0 turns it off).
+    // What luminance.comp counted besides the sums, for the log: the lit pixels left out and three sample pixels.
+    struct LuminanceDiag {
+        uint32_t no_depth = 0;
+        uint32_t non_finite = 0;
+        uint32_t huge = 0;
+        uint32_t black = 0;
+        uint32_t albedo = 0;  // the albedo's luma x 1024, summed over the counted pixels
+        float samples[3][8] = {};
+    };
+    LuminanceDiag ReadLuminanceDiag(const FrameSlot& slot) const;
+    void LogLuminanceDiag(const LuminanceDiag& diag, double valid, uint32_t unusable, uint32_t groups) const;
+    // The most one pixel adds to the exposure meter's mean (the lit picture after the exposure), 0 for no limit. Android has one, as a
+    // guard against a few extreme pixels setting the exposure of the whole picture. PT_EV_CEILING=<value> overrides it (0 turns it off).
     static float LuminanceCeiling();
     float ExposureFor(float ev, const ExposureSettings& settings) const;
 
