@@ -258,8 +258,7 @@ void* OpenCustomGpuDriver(std::string& error) {
         return nullptr;
     }
     g_gpu_driver = handle;
-    const char* tu_debug = std::getenv("TU_DEBUG");
-    LogInfo("android: custom GPU driver {} (TU_DEBUG={})", library, tu_debug ? tu_debug : "");
+    LogInfo("android: custom GPU driver {} (TU_DEBUG={})", library, tu_debug);
     return get_proc;
 }
 
