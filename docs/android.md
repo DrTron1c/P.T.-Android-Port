@@ -160,12 +160,13 @@ The Android NDK (r26 or newer), CMake 3.28, Ninja, Python 3, JDK 17 and Gradle 8
 `*.md`, `docs/` or the issue form) or a manual run (Actions > Android > Run workflow); the APK is then a workflow artifact. Whatever the
 result, the last step pushes a short log (status, the tail of each build log, the error lines) to the `ci-logs` branch.
 
-**Making a release.** The version is the one line of `android/version.txt`. To release it: change that line, add the notes in
-`android/release-notes/<version>.md`, push, wait for the branch's build to pass, and push the tag (`git tag v1.00 && git push origin v1.00`).
-The workflow builds the tag, checks that it matches `android/version.txt`, and publishes the APK `P.T.PC.Port-Android-arm64.apk` as a full
-release (not a pre-release, marked as the latest) titled "P.T. Android Port 1.00" with those notes. That release is what the installed
-apps find. The APK keeps its file name because the updater looks for it. Releases and tags named `android-build-N`, the test builds that
-came before 1.00, are deleted by the workflow when it publishes. The macOS workflow of the desktop port no longer starts on a release.
+**Making a release.** The version is the one line of `android/version.txt`. To release a new one: change that line, add the notes in
+`android/release-notes/<version>.md` and push to `android`. The workflow builds the commit and, because no release `v<version>` exists
+yet, publishes the APK `P.T.PC.Port-Android-arm64.apk` as a full release (not a pre-release, marked as the latest) titled "P.T. Android
+Port 1.00" with those notes, creating the tag at that commit. A build of a version that already has its release is only built. (Pushing the
+tag `v<version>` by hand does the same; it has to match `android/version.txt`.) That release is what the installed apps find. The APK keeps
+its file name because the updater looks for it. Releases and tags named `android-build-N`, the test builds that came before 1.00, are
+deleted by the workflow when it publishes. The macOS workflow of the desktop port no longer starts on a release.
 
 ## Fake PKG import
 

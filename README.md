@@ -145,9 +145,9 @@ shows one). Problems with the Windows, Linux or macOS versions belong with the
 
 CI does it for you: `.github/workflows/android.yml` builds the native code and the APK on GitHub's Linux runner for every push to
 the `android` branch, or on demand (**Actions > Android > Run workflow**), keeps the APK as a workflow artifact and pushes a short
-log of the run to the `ci-logs` branch. Pushing a tag `v<version>` (for example `v1.00`) also publishes the APK as the release of
-that version. The version is written once, in `android/version.txt`; it is the app's version name, the number shown in the menu and
-in the game's options, and the tag has to match it. The versionCode is the CI run number.
+log of the run to the `ci-logs` branch. The version is written once, in `android/version.txt`; it is the app's version name, the number
+shown in the menu and in the game's options, and the name of the release tag (`v1.00`). When a build finds that version has no release yet,
+it publishes the APK as the release of that version (with the notes of `android/release-notes/`). The versionCode is the CI run number.
 
 Locally: Android NDK r26 or newer, CMake 3.28, Ninja, Python 3, JDK 17 and Gradle 8.7 or newer.
 

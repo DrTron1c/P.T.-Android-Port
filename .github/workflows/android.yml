@@ -1,7 +1,8 @@
 # The Android app (docs/android.md): arm64, built with the NDK on GitHub's Linux runner.
 #  - a push to the android branch (or a manual run: Actions > Android > Run workflow) builds it and keeps the APK as a workflow artifact;
-#  - a push of a tag v<version> (v1.00) does the same and then publishes the APK as the release of that version, which the installed
-#    app finds by itself when it starts (Updater.java). The tag has to match android/version.txt.
+#  - when android/version.txt names a version that has no release yet (v1.00 for 1.00), the same run publishes the APK as the release of that
+#    version, with the notes in android/release-notes/<version>.md, which the installed app finds by itself when it starts (Updater.java);
+#    a push of the tag v<version> by hand does the same. A version that already has its release is only built.
 # The last step always pushes a short log of the run to the ci-logs branch.
 name: Android
 
@@ -66,32 +67,42 @@ jobs:
           path: dist/P.T.PC.Port-Android-arm64.apk
 
       - name: Publish the release
-        # only a pushed tag v<version> makes a release; a push to the branch only keeps the APK as a workflow artifact
-        if: startsWith(github.ref, 'refs/tags/v')
+        # a tag v<version>, or the android branch (and a manual run on it) when android/version.txt has a version without a release
+        if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/android'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
-          FILE_VERSION="$(tr -d '[:space:]' < android/version.txt)"
-          if [ "$VERSION" != "$FILE_VERSION" ]; then
-            echo "the tag $GITHUB_REF_NAME does not match android/version.txt ($FILE_VERSION): no release made" >&2
+          VERSION="$(tr -d '[:space:]' < android/version.txt)"
+          TAG="v$VERSION"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "$GITHUB_REF_NAME" != "$TAG" ]; then
+            echo "the tag $GITHUB_REF_NAME does not match android/version.txt ($VERSION): no release made" >&2
             exit 1
           fi
-          NOTES="android/release-notes/$VERSION.md"
-          if [ ! -f "$NOTES" ]; then
-            printf 'P.T. Android Port %s.\n' "$VERSION" > release-notes.md
-            NOTES=release-notes.md
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "$TAG is already released: nothing to publish"
+          else
+            NOTES="android/release-notes/$VERSION.md"
+            if [ ! -f "$NOTES" ]; then
+              printf 'P.T. Android Port %s.\n' "$VERSION" > release-notes.md
+              NOTES=release-notes.md
+            fi
+            if [ "${GITHUB_REF_TYPE}" = "tag" ]; then WHERE="--verify-tag"; else WHERE="--target $GITHUB_SHA"; fi
+            # a full release (not a pre-release, and the latest one): the installed app finds it by its tag, and compares the version
+            gh release create "$TAG" dist/P.T.PC.Port-Android-arm64.apk $WHERE --latest \
+              --title "P.T. Android Port $VERSION" --notes-file "$NOTES" --repo "$GITHUB_REPOSITORY"
           fi
-          # a full release (not a pre-release, and the latest one): the installed app finds it by its tag, and compares the version
-          gh release create "$GITHUB_REF_NAME" dist/P.T.PC.Port-Android-arm64.apk \
-            --verify-tag --latest --title "P.T. Android Port $VERSION" --notes-file "$NOTES" --repo "$GITHUB_REPOSITORY"
           # the builds of the testing time (pre-releases android-build-N) and their tags are removed
           gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
             --jq '.[] | select(.tag_name | startswith("android-build-")) | "\(.id) \(.tag_name)"' |
           while read -r id tag; do
             gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id" || true
             gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" || true
+          done
+          # tags of the testing time that have no release any more
+          git ls-remote --tags origin 'refs/tags/android-build-*' | awk '{print $2}' |
+          while read -r ref; do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/$ref" || true
           done
 
       - name: Push a short log to ci-logs
