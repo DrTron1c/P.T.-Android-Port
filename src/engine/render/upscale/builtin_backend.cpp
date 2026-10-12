@@ -472,7 +472,7 @@ private:
         images[4] = {linear_, history.view, VK_IMAGE_LAYOUT_GENERAL};
         images[5] = {VK_NULL_HANDLE, history_out.view, VK_IMAGE_LAYOUT_GENERAL};
         images[6] = {VK_NULL_HANDLE, output, VK_IMAGE_LAYOUT_GENERAL};
-        VkWriteDescriptorSet writes[7]{};
+        VkWriteDescriptorSet writes[9]{};
         for (uint32_t i = 0; i < 7; ++i) {
             writes[i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
             writes[i].dstSet = set;
