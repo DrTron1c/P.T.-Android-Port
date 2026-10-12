@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- the themed icon (Android 13 and newer): a disc with the keyhole cut out, which the system tints -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FF000000"
+        android:fillType="evenOdd"
+        android:pathData="M54,50m-26,0a26,26 0 1,0 52,0a26,26 0 1,0 -52,0M49,50.87A8.5,8.5 0 1,1 59,50.87L62.5,69L45.5,69Z" />
+</vector>

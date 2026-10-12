@@ -1,14 +1,16 @@
 package com.ptport.android;
 
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Matrix;
+import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.DisplayMetrics;
+import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.SurfaceHolder;
@@ -34,33 +36,50 @@ import java.io.File;
  * a mobile GPU ran it at a few frames a second. The size is chosen in the settings (SettingsPanel); 1080 lines by default.
  *
  * The settings panel opens over the game when the game's touch overlay SET button is pressed: the game sends the message
- * COMMAND_SETTINGS (SDL_SendAndroidMessage) and onUnhandledMessage shows it.
+ * COMMAND_SETTINGS (SDL_SendAndroidMessage) and onUnhandledMessage shows it. Once a second the game sends COMMAND_FRAME_STATS, which
+ * feeds the frame counter and the automatic picture size.
+ *
+ * The game runs in its own process (the manifest's android:process=":game"), so that leaving the game returns to the menu and
+ * starting it again begins a fresh process: SDL cannot run its main function twice in one process. onDestroy ends the process.
  */
 public class PTActivity extends SDLActivity {
-    static final String PREFS = "game";
-    static final String KEY_RENDER_HEIGHT = "render_height";
     /** The height, in pixels, of the picture the game draws; 0 draws at the screen's own size. */
     static final int DEFAULT_RENDER_HEIGHT = 1080;
     /** The frame limit the game's first start sets (ApplyDeviceDefaults), until pt.ini has one. */
     static final int DEFAULT_FRAME_RATE = 45;
     /** The message the game sends to open the settings panel (SDL's user commands start at 0x8000). */
     static final int COMMAND_SETTINGS = 0x8001;
+    /** The message the game sends once a second: the frame rate x10 (12 bits), GPU ms x4 (9 bits) and CPU ms x4 (9 bits) of a frame. */
+    static final int COMMAND_FRAME_STATS = 0x8002;
+    /** The picture sizes the automatic size moves between. */
+    private static final int[] AUTO_STEPS = { 480, 540, 630, 720, 810, 900, 1080, 1260, 1440 };
+    private static final int AUTO_TOP = 1440;
 
     /** The running game, for the settings panel's live changes (null when the game is not open). */
     private static PTActivity running;
     private View settingsPanel;
 
+    // the frame counter and the automatic picture size
+    private TextView counterView;
+    private int counterMode;
+    private boolean autoSize;
+    private int frameTarget = DEFAULT_FRAME_RATE;
+    private long frameTargetRead;
+    private final long started = SystemClock.uptimeMillis();
+    private int autoHeight;
+    private int autoBad;
+    private int autoGood;
+    private long autoQuietUntil;
+    private int autoBlockedHeight;
+    private long autoBlockedUntil;
+
+    /** The picture height chosen in the settings; 0 is the screen's own size. */
     static int renderHeight(Context context) {
-        try {
-            SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-            return Math.max(0, prefs.getInt(KEY_RENDER_HEIGHT, DEFAULT_RENDER_HEIGHT));
-        } catch (RuntimeException e) {
-            return DEFAULT_RENDER_HEIGHT;
-        }
+        return Math.max(0, AppPrefs.getInt(context, AppPrefs.RENDER_HEIGHT, DEFAULT_RENDER_HEIGHT));
     }
 
     static void setRenderHeight(Context context, int height) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY_RENDER_HEIGHT, Math.max(0, height)).apply();
+        AppPrefs.putInt(context, AppPrefs.RENDER_HEIGHT, Math.max(0, height));
     }
 
     /**
@@ -145,10 +164,13 @@ public class PTActivity extends SDLActivity {
 
     /** The surface size for the chosen picture height: {width, height}, or {0, 0} for the screen's own size. */
     static int[] fixedSizeFor(Context context) {
+        return fixedSizeFor(context, renderHeight(context));
+    }
+
+    static int[] fixedSizeFor(Context context, int wanted) {
         int width = 0;
         int height = 0;
         try {
-            int wanted = renderHeight(context);
             DisplayMetrics metrics = new DisplayMetrics();
             ((WindowManager) context.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay().getRealMetrics(metrics);
             int longSide = Math.max(metrics.widthPixels, metrics.heightPixels);
@@ -172,10 +194,27 @@ public class PTActivity extends SDLActivity {
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
+                // the chosen size is the top of the automatic range: it starts again from there
+                activity.autoHeight = 0;
+                activity.autoBad = 0;
+                activity.autoGood = 0;
+                activity.autoQuietUntil = SystemClock.uptimeMillis() + 8000;
                 if (mSurface instanceof FixedSurface) {
                     int[] size = fixedSizeFor(activity);
                     ((FixedSurface) mSurface).resize(size[0], size[1]);
                 }
+            }
+        });
+    }
+
+    /** The frame counter and the automatic size were changed in the settings: the running game reads them again. */
+    static void applyOverlay(Context context) {
+        final PTActivity activity = running;
+        if (activity == null) return;
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.readOverlayPrefs();
             }
         });
     }
@@ -198,6 +237,7 @@ public class PTActivity extends SDLActivity {
                 applyFrameRate(PTActivity.this);
             }
         }, 4000);
+        readOverlayPrefs();
     }
 
     @Override
@@ -209,7 +249,11 @@ public class PTActivity extends SDLActivity {
     @Override
     protected void onDestroy() {
         if (running == this) running = null;
+        final boolean leaving = isFinishing();
         super.onDestroy();
+        // SDL runs the game's main function once per process (its native state is not reset), so the game's process ends with the
+        // game and the menu's next start gets a new one. A normal exit (status 0): the crash report does not take it for a crash.
+        if (leaving) Runtime.getRuntime().exit(0);
     }
 
     @Override
@@ -229,6 +273,16 @@ public class PTActivity extends SDLActivity {
             });
             return true;
         }
+        if (command == COMMAND_FRAME_STATS && param instanceof Integer) {
+            final int packed = (Integer) param;
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    onFrameStats(packed);
+                }
+            });
+            return true;
+        }
         return super.onUnhandledMessage(command, param);
     }
 
@@ -239,6 +293,129 @@ public class PTActivity extends SDLActivity {
             return;
         }
         super.onBackPressed();
+    }
+
+    // ---- the frame counter ----
+
+    private void readOverlayPrefs() {
+        counterMode = AppPrefs.getInt(this, AppPrefs.FPS_COUNTER, 0);
+        autoSize = AppPrefs.getBool(this, AppPrefs.AUTO_SIZE, false);
+        if (!autoSize) {
+            // leaving the automatic size puts the chosen one back
+            if (autoHeight != 0) applyPictureSize(this);
+            autoHeight = 0;
+        }
+        frameTarget = frameRateTarget(this);
+        frameTargetRead = SystemClock.uptimeMillis();
+        if (counterMode == 0 && counterView != null && mLayout != null) {
+            mLayout.removeView(counterView);
+            counterView = null;
+        }
+    }
+
+    private void showCounter(float fps, float gpu, float cpu) {
+        if (counterMode == 0 || mLayout == null) return;
+        if (counterView == null) {
+            float density = getResources().getDisplayMetrics().density;
+            counterView = new TextView(this);
+            counterView.setTextSize(13);
+            counterView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+            counterView.setShadowLayer(3f, 1f, 1f, Color.BLACK);
+            counterView.setBackgroundColor(0x80000000);
+            counterView.setPadding((int) (6 * density), (int) (2 * density), (int) (6 * density), (int) (2 * density));
+            counterView.setGravity(Gravity.START);
+            counterView.setClickable(false);
+            counterView.setFocusable(false);
+            RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            params.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+            params.addRule(RelativeLayout.ALIGN_PARENT_LEFT);
+            params.setMargins((int) (10 * density), (int) (8 * density), 0, 0);
+            mLayout.addView(counterView, params);
+        }
+        float target = frameTarget > 0 ? frameTarget : 60f;
+        int color = fps >= target * 0.95f ? 0xFF7CFF8A : fps >= target * 0.8f ? 0xFFFFE066 : 0xFFFF6B5E;
+        counterView.setTextColor(color);
+        StringBuilder text = new StringBuilder();
+        text.append(Math.round(fps)).append(" fps");
+        if (counterMode >= 2) {
+            text.append("\nGPU ").append(String.format(java.util.Locale.US, "%.1f", gpu)).append(" ms  CPU ")
+                    .append(String.format(java.util.Locale.US, "%.1f", cpu)).append(" ms");
+            if (mSurface instanceof FixedSurface) {
+                FixedSurface surface = (FixedSurface) mSurface;
+                if (surface.fixedWidth > 0) {
+                    text.append("\n").append(surface.fixedWidth).append("x").append(surface.fixedHeight).append(autoSize ? " auto" : "");
+                }
+            }
+        }
+        counterView.setText(text.toString());
+    }
+
+    // ---- the automatic picture size ----
+
+    private void onFrameStats(int packed) {
+        float fps = (packed & 0xFFF) / 10f;
+        float gpu = ((packed >> 12) & 0x1FF) / 4f;
+        float cpu = ((packed >> 21) & 0x1FF) / 4f;
+        long now = SystemClock.uptimeMillis();
+        if (now - frameTargetRead > 5000) {
+            frameTarget = frameRateTarget(this);
+            frameTargetRead = now;
+        }
+        showCounter(fps, gpu, cpu);
+        if (autoSize) adjustPictureSize(fps, gpu, now);
+    }
+
+    /**
+     * Lowers the picture one step when the game ran below its frame rate with the GPU as the cause for four seconds in a row, and raises
+     * it a step after twenty seconds of ease, never above the size chosen in the settings. A size that just failed is not tried again
+     * for 90 seconds. Every change rebuilds the game's render targets (a short pause), so changes are rare.
+     */
+    private void adjustPictureSize(float fps, float gpu, long now) {
+        if (now - started < 25000 || now < autoQuietUntil || settingsPanel != null) return;
+        int cap = renderHeight(this);
+        if (cap <= 0 || cap > AUTO_TOP) cap = AUTO_TOP;
+        if (autoHeight <= 0 || autoHeight > cap) autoHeight = cap;
+        float target = frameTarget > 0 ? frameTarget : 60f;
+        float interval = 1000f / Math.max(fps, 1f);
+        boolean struggling = fps < target * 0.93f && gpu > 0.78f * interval;
+        boolean easy = fps >= target * 0.97f && gpu < 0.55f * (1000f / target);
+        if (struggling) {
+            autoBad++;
+            autoGood = 0;
+        } else if (easy) {
+            autoGood++;
+            autoBad = 0;
+        } else {
+            autoBad = 0;
+            autoGood = 0;
+        }
+        int next = 0;
+        if (autoBad >= 4) {
+            for (int step : AUTO_STEPS) {
+                if (step < autoHeight) next = step;
+            }
+            if (next > 0) {
+                autoBlockedHeight = autoHeight;
+                autoBlockedUntil = now + 90000;
+            }
+        } else if (autoGood >= 20) {
+            for (int step : AUTO_STEPS) {
+                if (step > autoHeight && step <= cap) {
+                    next = step;
+                    break;
+                }
+            }
+            if (next == 0 && autoHeight < cap) next = cap;
+            if (next > 0 && next >= autoBlockedHeight && now < autoBlockedUntil) next = 0;
+        }
+        autoBad = next > 0 || autoBad >= 4 ? 0 : autoBad;
+        autoGood = next > 0 || autoGood >= 20 ? 0 : autoGood;
+        if (next > 0 && mSurface instanceof FixedSurface) {
+            autoHeight = next;
+            autoQuietUntil = now + 10000;
+            int[] size = fixedSizeFor(this, next);
+            ((FixedSurface) mSurface).resize(size[0], size[1]);
+        }
     }
 
     private void toggleSettings() {
@@ -265,6 +442,16 @@ public class PTActivity extends SDLActivity {
         title.setTextSize(22);
         title.setTextColor(Color.WHITE);
         header.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        Button menu = new Button(this);
+        menu.setText("Main menu");
+        menu.setAllCaps(false);
+        menu.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                leaveGame();
+            }
+        });
+        header.addView(menu, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         Button close = new Button(this);
         close.setText("Close");
         close.setAllCaps(false);
@@ -288,6 +475,24 @@ public class PTActivity extends SDLActivity {
         settingsPanel = frame;
     }
 
+    /**
+     * Back to the main menu: after a question, since a tap on the wrong button should not end the game. finish() makes SDLActivity send the game
+     * its quit (the game saves, shuts down and ends its process); the menu is the screen under this one.
+     */
+    private void leaveGame() {
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("Back to the main menu?")
+                .setMessage("The game saves as you play. Anything since the last save is lost.")
+                .setNegativeButton("Stay", null)
+                .setPositiveButton("Leave", new android.content.DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(android.content.DialogInterface dialog, int which) {
+                        finish();
+                    }
+                })
+                .show();
+    }
+
     private void closeSettings() {
         if (settingsPanel != null && mLayout != null) mLayout.removeView(settingsPanel);
         settingsPanel = null;
@@ -298,8 +503,8 @@ public class PTActivity extends SDLActivity {
      * but the view the touch is reported in still has the screen's size: a touch here is scaled to the buffer's size first.
      */
     static final class FixedSurface extends SDLSurface {
-        private int fixedWidth;
-        private int fixedHeight;
+        int fixedWidth;
+        int fixedHeight;
 
         FixedSurface(Context context, int width, int height) {
             super(context);

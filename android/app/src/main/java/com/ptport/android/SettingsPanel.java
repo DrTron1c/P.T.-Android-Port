@@ -29,13 +29,16 @@ import java.util.regex.Pattern;
  *
  * A game setting is passed to the game as a "name=number" line in android-settings.txt of its data folder; the game takes the file
  * about twice a second while it runs, applies each line as a tap on the same row of its own settings page would, and writes pt.ini.
- * Without a running game the file waits for the next start. The picture size and the frame rate hint are the app's own (PTActivity).
+ * Without a running game the file waits for the next start. The picture size, the frame rate hint, the frame counter and the
+ * automatic picture size are the app's own (PTActivity, AppPrefs).
  */
 final class SettingsPanel {
-    private static final int ACCENT = 0xFF3D7BFF;
-    private static final int BUTTON = 0xFF2B2B2B;
+    private static final int ACCENT = MenuStyle.AMBER_DARK;
+    private static final int BUTTON = 0xFF24211C;
     private static final String PICTURE = "picture";
     private static final String FPS = "fps_limit";
+    private static final String COUNTER = AppPrefs.FPS_COUNTER;
+    private static final String AUTO = AppPrefs.AUTO_SIZE;
     private static final Pattern STATUS = Pattern.compile("(\\d+) fps, gpu ([0-9.]+) ms.*?, (\\d+x\\d+),");
 
     private static final class Setting {
@@ -108,9 +111,15 @@ final class SettingsPanel {
         settings.add(new Setting(PICTURE, "Picture size",
                 "How many lines the game draws; Android scales it to the screen. Fewer lines run faster and look softer.",
                 new String[] { "Screen", "1440", "1080", "900", "720", "540", "480" }, new int[] { 0, 1440, 1080, 900, 720, 540, 480 }));
+        settings.add(new Setting(AUTO, "Automatic picture size",
+                "On: when the game cannot keep its frame rate, it lowers the picture size by a step, and raises it again when there is room, never above "
+                        + "the size chosen above. Each change pauses the picture for a moment.", OFF_ON, ZERO_ONE));
         settings.add(new Setting(FPS, "Frame rate",
                 "The most frames a second the game draws. A steady lower rate looks smoother than a rate that rises and falls; the screen is asked to match it.",
                 new String[] { "No limit", "30", "40", "45", "60", "90", "120" }, new int[] { 0, 30, 40, 45, 60, 90, 120 }));
+        settings.add(new Setting(COUNTER, "Frame counter",
+                "Shows the frame rate in the corner of the game. Detailed adds the GPU and CPU time of a frame and the picture size.",
+                new String[] { "Off", "Frame rate", "Detailed" }, new int[] { 0, 1, 2 }));
         settings.add(new Setting("vsync", "V-sync", "Waits for the screen's refresh. Off can tear but lets the game run as fast as it can.", OFF_ON, ZERO_ONE));
         settings.add(new Setting("shadows", "Shadows", "The detail of the shadow maps. Off is the fastest.",
                 new String[] { "Off", "Low", "Medium", "High" }, new int[] { 0, 1, 2, 3 }));
@@ -219,6 +228,8 @@ final class SettingsPanel {
         // without a pt.ini the game has not run yet and starts on its fast preset
         boolean fresh = ini.isEmpty();
         values.put(PICTURE, PTActivity.renderHeight(context));
+        values.put(AUTO, AppPrefs.getInt(context, AUTO, 0) != 0 ? 1 : 0);
+        values.put(COUNTER, clamp(AppPrefs.getInt(context, COUNTER, 0), 0, 2));
         values.put(FPS, number(ini, "display.fps_limit", 0));
         values.put("vsync", flag(ini, "display.vsync", true));
         values.put("shadows", clamp(number(ini, "graphics.shadow_quality", fresh ? 1 : 3), 0, 3));
@@ -286,6 +297,9 @@ final class SettingsPanel {
         if (setting.key.equals(PICTURE)) {
             PTActivity.setRenderHeight(context, value);
             PTActivity.applyPictureSize(context);
+        } else if (setting.key.equals(AUTO) || setting.key.equals(COUNTER)) {
+            AppPrefs.putInt(context, setting.key, value);
+            PTActivity.applyOverlay(context);
         } else {
             Map<String, Integer> change = new LinkedHashMap<String, Integer>();
             change.put(setting.key, value);
@@ -439,7 +453,9 @@ final class SettingsPanel {
 
         heading(column, "Speed");
         settingRow(column, find(PICTURE));
+        settingRow(column, find(AUTO));
         settingRow(column, find(FPS));
+        settingRow(column, find(COUNTER));
         settingRow(column, find("vsync"));
         heading(column, "Lighting");
         settingRow(column, find("shadows"));

@@ -1,5 +1,9 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#ifdef __ANDROID__
+#include <unistd.h>
+#include <cstdio>
+#endif
 #include "engine/platform/update_check.h"
 
 #ifdef _WIN32
@@ -19,6 +23,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <cmath>
 #include <array>
 #include <chrono>
 #include <ctime>
@@ -5249,9 +5254,14 @@ int RunGame(App& app, pt::Vfs& vfs) {
 #ifdef __ANDROID__
         {
             // Android ends an app without a shutdown, so the pipeline cache would never be written: it is written here while it grows
+            // The write holds the pipeline creation lock and costs about 12 ms: it waits for a moment when nobody is looking (a menu is
+            // open or the game is paused), and only goes ahead in play after four minutes. The background write and the shutdown
+            // write still happen at once.
             static auto cache_saved = std::chrono::steady_clock::now();
             const auto cache_now = std::chrono::steady_clock::now();
-            if (cache_now - cache_saved >= std::chrono::seconds(30)) {
+            const auto cache_age = cache_now - cache_saved;
+            const bool cache_idle = game.Paused() || (ui_ready && ui.MenuOpen());
+            if ((cache_idle && cache_age >= std::chrono::seconds(45)) || cache_age >= std::chrono::seconds(240)) {
                 cache_saved = cache_now;
                 app.renderer.Context().SavePipelineCache("periodic");
             }
@@ -5273,8 +5283,10 @@ int RunGame(App& app, pt::Vfs& vfs) {
             static uint64_t status_frames = 0;
             static double status_gpu = 0.0;
             static double status_pass[6] = {};
+            static double status_cpu = 0.0;
             ++status_frames;
             status_gpu += app.scene.Stats().gpu_ms;
+            status_cpu += app.scene.Stats().cpu_ms;
             for (int i = 0; i < 6; ++i) status_pass[i] += app.scene.Stats().pass_ms[i];
             const auto status_now = std::chrono::steady_clock::now();
             const double status_seconds = std::chrono::duration<double>(status_now - status_start).count();
@@ -5295,7 +5307,7 @@ int RunGame(App& app, pt::Vfs& vfs) {
                 const double frames_seen = static_cast<double>(std::max<uint64_t>(status_frames, 1));
                 pt::LogInfo("status: {:.0f} fps, gpu {:.2f} ms, vram {:.0f} of {:.0f} MB, {}x{}, upscaler {} {}, frame generation {}, vsync {}, "
                             "fps limit {}, floor {}{}, ev {:.2f} exposure {:.5f} luminance {:.4f}, {} draws {} lights, "
-                            "gpu ms: shadows {:.1f} mirror {:.1f} gbuffer {:.1f} lighting {:.1f} compose {:.1f} post {:.1f}",
+                            "gpu ms: shadows {:.1f} mirror {:.1f} gbuffer {:.1f} lighting {:.1f} compose {:.1f} post {:.1f}, cpu {:.1f} ms",
                             status_frames / status_seconds, status_gpu / std::max<uint64_t>(status_frames, 1), used / 1048576.0,
                             budget / 1048576.0, render_extent.width, render_extent.height, app.settings.upscaling.upscaler,
                             app.settings.upscaling.quality, app.settings.upscaling.frame_generation,
@@ -5303,13 +5315,42 @@ int RunGame(App& app, pt::Vfs& vfs) {
                             ui_ready && ui.MenuOpen() ? ", menu open" : "", app.scene.Stats().ev, app.scene.Stats().exposure,
                             app.scene.Stats().luminance, app.scene.Stats().draws, app.scene.Stats().lights,
                             status_pass[0] / frames_seen, status_pass[1] / frames_seen, status_pass[2] / frames_seen,
-                            status_pass[3] / frames_seen, status_pass[4] / frames_seen, status_pass[5] / frames_seen);
+                            status_pass[3] / frames_seen, status_pass[4] / frames_seen, status_pass[5] / frames_seen,
+                            status_cpu / frames_seen);
                 status_start = status_now;
                 status_frames = 0;
                 status_gpu = 0.0;
+                status_cpu = 0.0;
                 for (double& pass : status_pass) pass = 0.0;
             }
         }
+#ifdef __ANDROID__
+        {
+            // PTActivity's frame counter: once a second the frame rate and the average GPU and CPU time of a frame go up as one number
+            // (frames a second x10 in 12 bits, GPU ms x4 in 9, CPU ms x4 in 9); the activity decides whether to show it
+            static auto counter_start = std::chrono::steady_clock::now();
+            static uint32_t counter_frames = 0;
+            static double counter_gpu = 0.0;
+            static double counter_cpu = 0.0;
+            const auto finite = [](double value) { return std::isfinite(value) ? value : 0.0; };
+            ++counter_frames;
+            counter_gpu += finite(app.scene.Stats().gpu_ms);
+            counter_cpu += finite(app.scene.Stats().cpu_ms);
+            const auto counter_now = std::chrono::steady_clock::now();
+            const double counter_seconds = std::chrono::duration<double>(counter_now - counter_start).count();
+            if (counter_seconds >= 1.0) {
+                const double counted = static_cast<double>(std::max<uint32_t>(counter_frames, 1));
+                const int fps10 = std::clamp(static_cast<int>(std::lround(counter_frames / counter_seconds * 10.0)), 0, 4095);
+                const int gpu4 = std::clamp(static_cast<int>(std::lround(counter_gpu / counted * 4.0)), 0, 511);
+                const int cpu4 = std::clamp(static_cast<int>(std::lround(counter_cpu / counted * 4.0)), 0, 511);
+                SDL_SendAndroidMessage(0x8002, fps10 | (gpu4 << 12) | (cpu4 << 21));
+                counter_start = counter_now;
+                counter_frames = 0;
+                counter_gpu = 0.0;
+                counter_cpu = 0.0;
+            }
+        }
+#endif
         if (app.window && !vr) {
             // Frame cap. The scene is rendered behind the pause menu and the PC settings page too, so with v-sync off, or v-sync
             // on a high refresh display, a menu ran at whatever rate the GPU allowed (260 frames per second on the user's 260 Hz
@@ -5404,7 +5445,22 @@ bool WouldOpenWindow(const Options& options) {
              !options.fox2_test.empty() || options.list_pads);
 }
 
+#ifdef __ANDROID__
+static int PtMain(int argc, char** argv);
+
 int main(int argc, char** argv) {
+    const int result = PtMain(argc, argv);
+    // The game's process ends with the game: SDL's activity would keep it, and a second start of this main function in the same process
+    // finds the first one's statics spent. The app's menu starts the next game in a new process. _exit skips the static destructors,
+    // which would run while the driver's threads are still alive; the status is the game's own, so a failed start is reported.
+    std::fflush(nullptr);
+    _exit(result);
+}
+
+static int PtMain(int argc, char** argv) {
+#else
+int main(int argc, char** argv) {
+#endif
 #ifdef __ANDROID__
     // the shaders and fonts the desktop builds find next to the executable are copied out of the APK first (docs/android.md)
     const bool android_runtime_ready = pt::android::PrepareRuntime();

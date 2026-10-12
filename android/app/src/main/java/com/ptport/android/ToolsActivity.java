@@ -1,31 +1,29 @@
 package com.ptport.android;
 
-import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
-import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 /**
- * The second icon ("P.T. tools"): the game's settings and how fast it runs, without a computer.
- *
- * - The settings (SettingsPanel): picture size, frame rate, and each graphics option on its own, or a preset for all of them. The
- *   same panel opens over the game from its SET button. Changes wait for the game's next start when it is not running.
- * - The log: the device, the settings, the frame rate and the end of the game's log, to copy or share.
+ * The log, from the main menu: the device, the settings, the frame rate and the end of the game's log, to copy or share. The menu's
+ * Settings has the settings themselves.
  */
-public class ToolsActivity extends Activity {
+public class ToolsActivity extends ThemedActivity {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private TextView logText;
     private Button copyButton;
@@ -38,59 +36,37 @@ public class ToolsActivity extends Activity {
         refreshLog();
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        refreshLog();
-    }
-
-    private Button button(String label, View.OnClickListener listener) {
-        Button button = new Button(this);
-        button.setText(label);
-        button.setAllCaps(false);
-        button.setOnClickListener(listener);
-        return button;
-    }
-
     private void buildUi() {
-        float density = getResources().getDisplayMetrics().density;
-        int pad = (int) (14 * density);
+        int pad = MenuStyle.dp(this, 20);
         LinearLayout column = new LinearLayout(this);
         column.setOrientation(LinearLayout.VERTICAL);
         column.setPadding(pad, pad, pad, pad);
 
-        TextView title = new TextView(this);
-        title.setText("P.T. tools");
-        title.setTextSize(24);
-        title.setTextColor(Color.WHITE);
-        column.addView(title);
-
-        Button start = button("Start the game", new View.OnClickListener() {
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        MenuStyle.Entry back = new MenuStyle.Entry(this, "<  Back", 18);
+        back.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                startActivity(new Intent(ToolsActivity.this, ImportActivity.class));
                 finish();
             }
         });
-        column.addView(start);
+        header.addView(back);
+        TextView title = MenuStyle.text(this, "LOG", 24, MenuStyle.INK, true);
+        title.setLetterSpacing(0.25f);
+        title.setPadding(pad, 0, 0, 0);
+        header.addView(title);
+        column.addView(header);
 
-        TextView settingsTitle = new TextView(this);
-        settingsTitle.setText("Settings");
-        settingsTitle.setTextSize(20);
-        settingsTitle.setTextColor(Color.WHITE);
-        settingsTitle.setPadding(0, pad, 0, 0);
-        column.addView(settingsTitle);
-        column.addView(new SettingsPanel(this).createContent());
+        TextView hint = MenuStyle.text(this, "How the game is doing. Play for a minute first; a frame rate line is written every 10 seconds. "
+                + "Copy it and paste it into the chat if something is wrong.", 13, MenuStyle.DIM, true);
+        hint.setPadding(0, pad / 2, 0, pad / 2);
+        column.addView(hint);
 
-        TextView logTitle = new TextView(this);
-        logTitle.setText("The log: how the game is doing. Play for a minute first; a frame rate line is written every 10 seconds.");
-        logTitle.setTextSize(14);
-        logTitle.setTextColor(Color.LTGRAY);
-        logTitle.setPadding(0, pad, 0, pad / 3);
-        column.addView(logTitle);
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        copyButton = button("Copy", new View.OnClickListener() {
+        copyButton = MenuStyle.button(this, "Copy", new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 try {
@@ -103,8 +79,8 @@ public class ToolsActivity extends Activity {
                 }
             }
         });
-        row.addView(copyButton, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        row.addView(button("Share", new View.OnClickListener() {
+        row.addView(copyButton, weighted());
+        row.addView(MenuStyle.button(this, "Share", new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 Intent send = new Intent(Intent.ACTION_SEND);
@@ -117,27 +93,33 @@ public class ToolsActivity extends Activity {
                     Toast.makeText(ToolsActivity.this, "Nothing on this device can take it; use Copy.", Toast.LENGTH_LONG).show();
                 }
             }
-        }), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        row.addView(button("Refresh", new View.OnClickListener() {
+        }), weighted());
+        row.addView(MenuStyle.button(this, "Refresh", new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 refreshLog();
             }
-        }), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        }), weighted());
         column.addView(row);
 
         logText = new TextView(this);
         logText.setTextSize(11);
         logText.setTypeface(Typeface.MONOSPACE);
-        logText.setTextColor(Color.rgb(200, 220, 200));
+        logText.setTextColor(0xFFC8DCC8);
         logText.setTextIsSelectable(true);
-        logText.setPadding(0, pad, 0, 0);
-        column.addView(logText);
-
+        logText.setPadding(0, pad, 0, pad);
         ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(Color.BLACK);
-        scroll.addView(column);
-        setContentView(scroll);
+        scroll.addView(logText);
+        column.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        int width = Math.min(getResources().getDisplayMetrics().widthPixels, MenuStyle.dp(this, 900));
+        root.addView(column, new FrameLayout.LayoutParams(width, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER_HORIZONTAL));
+    }
+
+    private LinearLayout.LayoutParams weighted() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        params.rightMargin = MenuStyle.dp(this, 8);
+        return params;
     }
 
     private void refreshLog() {

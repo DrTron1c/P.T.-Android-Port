@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- a keyhole, dark against the glow, with a thin warm rim; inside the adaptive icon's safe zone (the middle 66 of 108) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FF040302"
+        android:strokeColor="#FFE9C885"
+        android:strokeWidth="1.3"
+        android:strokeLineJoin="round"
+        android:pathData="M49,50.87A8.5,8.5 0 1,1 59,50.87L62.5,69L45.5,69Z" />
+</vector>

@@ -21,40 +21,60 @@
         android:largeHeap="true"
         android:requestLegacyExternalStorage="false"
         android:appCategory="game"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
 
-        <!-- the launcher: checks for the game files, asks for them when they are missing, then starts the game -->
+        <!-- the launcher: asks GitHub for a newer build, asks for the game files when they are missing, then opens the menu -->
         <activity
             android:name=".ImportActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|uiMode"
-            android:theme="@android:style/Theme.Material.NoActionBar">
+            android:theme="@style/MenuTheme">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- the second icon: the settings (SettingsPanel.java) and the log (ToolsActivity.java) -->
+        <!-- the main menu: Start, Load save, Settings (MenuActivity.java) and the screens it opens -->
+        <activity
+            android:name=".MenuActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|uiMode|navigation"
+            android:theme="@style/MenuTheme" />
+        <activity
+            android:name=".SavesActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|uiMode|navigation"
+            android:theme="@style/MenuTheme" />
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|uiMode|navigation"
+            android:theme="@style/MenuTheme" />
         <activity
             android:name=".ToolsActivity"
-            android:exported="true"
-            android:label="P.T. tools"
-            android:theme="@android:style/Theme.Material.NoActionBar">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:exported="false"
+            android:label="P.T. log"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|uiMode|navigation"
+            android:theme="@style/MenuTheme" />
 
+        <!-- the game, in a process of its own: SDL runs the game's main function once per process, so the game's process ends with the
+             game and the menu's next Start gets a new one (PTActivity.onDestroy) -->
         <activity
             android:name=".PTActivity"
             android:exported="false"
+            android:process=":game"
             android:label="P.T."
             android:alwaysRetainTaskState="true"
             android:launchMode="singleTask"
             android:screenOrientation="sensorLandscape"
             android:preferMinimalPostProcessing="true"
-            android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation" />
+            android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation|density|fontScale|colorMode|touchscreen" />
     </application>
 </manifest>

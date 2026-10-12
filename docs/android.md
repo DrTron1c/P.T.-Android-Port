@@ -22,8 +22,8 @@ toolchain at hand); what has been tried is listed under "Status" below.
    signed with the same key (`android/pt-port.keystore`), so a newer APK installs over an older one and keeps the game files.
    This first install is the only one done by hand: from a build with the updater in it (see "Updates"), the app updates itself.
 2. The first start shows a page that asks for the game. Choose the dump folder, or the two files themselves, or the fPKG file
-   ("Or choose a fake PKG"; a folder that holds only one PKG works too). Keep the screen on until the copy is done; then the game
-   starts. Later starts go straight to the game.
+   ("Or choose a fake PKG"; a folder that holds only one PKG works too). Keep the screen on until the copy is done; then the main
+   menu opens. Later starts go to the menu after the update check.
 3. Settings, the save and `pt.log` are in the app's private storage (`pt-runtime/data`). Uninstalling the app deletes them and the
    copied game files.
 
@@ -43,6 +43,30 @@ seconds for the answer; offline, it starts as usual.
   signed with the same key as the installed app.
 
 The check reads only published releases, which is why the CI publishes a (pre)release rather than a draft; it keeps the newest three.
+
+## The main menu
+
+`MenuActivity` (after the launcher's update check and the crash report, when there is one): Start, Load save, Settings, and small links
+to the game files (choose them again), a new update check and the log. The look is code only (`AtmosphereView`, `MenuStyle`): a dark
+room with a lamp that flickers and now and then goes out, dust, a vignette and film grain; no image or font is used. The pad moves
+between the entries (D-pad or stick; A presses, B goes back).
+
+- **Start** starts the game, which loads its own save. The game runs in its own process (`android:process=":game"` on `PTActivity`):
+  SDL cannot run the game's main function twice in one process, so the game's process ends with the game: when `main` returns the
+  native code calls `_exit` with the game's result (`PtMain` in `main.cpp`; 0 is a normal end, which the crash report does not count, any
+  other number is reported), and `PTActivity.onDestroy` ends the process as a fallback. The next Start gets a new process. The way back
+  to the menu: Quit in the game's own menu, or "Main menu" at the top of the settings panel (the SET button; it asks first). `MenuActivity`
+  waits (4 s at most) for the old process to be gone before it starts. A game that crashed shows its report when the menu comes back.
+- **Load save** (`SavesActivity`, `SaveManager`): the current save (floor, cleared, Game+), Continue, Back up now, Save to a file, Choose
+  a save file (a 128-byte `PT_Save_Data` slot file with the right magic and version, a PC save too), New game, and the list of backups with
+  Put back and Delete. The game keeps two alternating slot files, `PT_Save_Data0` and `PT_Save_Data1`, in `data/`; the one with the
+  higher sequence number is read. Everything that replaces a save keeps the old one first, in `data/saves/backup-*`.
+- **Settings** (`SettingsActivity`): the same panel as in the game (`SettingsPanel`). The old second icon, "P.T. tools", is gone; its
+  log is `ToolsActivity`, reached from the menu's Log link.
+- The app's own settings (picture size, the frame counter, the automatic size) are in `data/android-app.txt` (`AppPrefs`), a file and
+  not SharedPreferences, because the menu and the game run in different processes.
+
+The app icon is an original drawing (`res/drawable/ic_launcher_*.xml`, an adaptive icon with a themed-icon layer): a keyhole in a warm glow.
 
 ## Controls
 
@@ -110,31 +134,39 @@ The desktop settings are far too heavy for a tablet GPU at the tablet's own reso
   since SDL divides them by the surface size.
 - The first start of a build with `android-defaults-1` (a marker in `data/`) applies the Low graphics preset.
 - Settings (`SettingsPanel.java`): the touch overlay's SET button opens the panel over the running game (the game sends the Android
-  message `0x8001`, `PTActivity.onUnhandledMessage` shows it); the second icon, "P.T. tools", has the same panel above the log.
+  message `0x8001`, `PTActivity.onUnhandledMessage` shows it); the main menu's Settings has the same panel.
   It has four presets (Fastest, Fast, Balanced, Original), the picture size, a frame rate limit, v-sync and each graphics option on
   its own. A game setting goes to the game as a `name=number` line in `data/android-settings.txt` (the number is the row's value
   index on the game's own settings page); the game looks for the file twice a second and applies each line through
   `PcSettings::Set`, as a tap on that row would, so it acts at once and `pt.ini` keeps it (`PcSettings::ApplyAndroidChanges`). With
-  no game running the file waits for the next start. The picture size is SharedPreferences and takes effect at once
+  no game running the file waits for the next start. The picture size is in `AppPrefs` and takes effect at once
   (`PTActivity.applyPictureSize` resizes the fixed surface; the game sees a window of the new size).
+- The frame counter (Settings > Frame counter: Off, Frame rate, Detailed): once a second the game sends the Android message `0x8002`
+  (frames a second x10 in 12 bits, GPU ms x4 in 9, CPU ms x4 in 9, averaged over the second) and `PTActivity` shows it in the top left
+  corner, green at the frame limit, yellow below 95 % of it and red below 80 %; Detailed adds the GPU and CPU time of a frame and the
+  picture size. The same message drives the automatic picture size (Settings > Automatic picture size, off by default, experimental):
+  after 25 s of play, four seconds in a row below 93 % of the frame limit with the GPU as the cause lower the size one step (480, 540,
+  630, 720, 810, 900, 1080, 1260, 1440), twenty seconds of ease raise it one step, never above the size chosen; a size that just failed
+  is not tried again for 90 s and a change is followed by a 10 s pause. Every change rebuilds the render targets, so it pauses the picture.
 - The frame rate limit is also given to Android as a hint (`Surface.setFrameRate`, Android 11 and newer) so the display runs at that
   rate or a multiple of it: 45 frames a second on a screen that stays at 144 Hz are shown for 3 and 4 refreshes by turns, which is
   choppy. The app is marked `appCategory="game"` for the system's game mode.
 - The `status:` line in `pt.log` ends with the GPU time of each part of the frame (shadows, mirror, gbuffer, lighting, compose,
-  post), also shown at the top of the settings panel.
-- The pipeline cache is written every 30 s, when the app goes to the background, and at shutdown (an Android app is usually ended
-  without one, which left every start with a cold cache).
+  post) and the CPU time of a frame, also shown at the top of the settings panel.
+- The pipeline cache is written when the app goes to the background and at shutdown (an Android app is usually ended without one,
+  which left every start with a cold cache), and while it grows: at a quiet moment (a menu open or the game paused, 45 s after the last
+  write) or after 4 minutes of play. The write holds the pipeline creation lock for about 12 ms, which was a hitch every 30 s.
 - A suboptimal swapchain (`VK_SUBOPTIMAL_KHR`) does not rebuild the swapchain on Android. If the surface reports a rotated
   transform the swapchain uses IDENTITY with the window's size and the system rotates. The swapchain's size and transforms are in
   pt.log (`vulkan: swapchain ...`).
 - Menus: a finger is the pointer and a finger going down is a click (`InputDevice::TouchPointer`); the mouse SDL makes of a touch does
   the same where it works.
-- The tools screen shows the log: device, settings, the `status:` lines (fps, GPU ms, render size, every 10 s), warnings and errors.
+- The log screen (the menu's Log link) shows the device, settings, the `status:` lines (fps, GPU ms, render size, every 10 s), warnings and errors.
 
 ## When the game closes by itself
 
 Android keeps the reason every earlier run of an app ended (`ApplicationExitInfo`, Android 11 and newer). If the last run was
-a crash, a kill for memory or a hang, the launcher shows `CrashReport.java`'s report instead of starting the game again: the
+a crash, a kill for memory or a hang, the launcher (or the menu, when the game's process ended while it was in use) shows `CrashReport.java`'s report: the
 device, how the run ended (reason, signal, memory then), the native crash's backtrace from the tombstone, the head and tail of
 `pt.log`, and the app's logcat. Copy and Share put it where it can be pasted into an issue. The report is also kept in the app's
 files as `last-crash-report.txt`. Without it, `pt.log` is at `files/pt-runtime/data/pt.log` (`adb shell run-as

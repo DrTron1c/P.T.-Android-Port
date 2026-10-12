@@ -56,6 +56,11 @@ import java.util.Map;
  * the start goes on as above.
  */
 public class ImportActivity extends Activity {
+    /** How the menu opens this screen: to choose the game files again (MODE_IMPORT), or to show the report of a game that closed (MODE_CRASH). */
+    static final String EXTRA_MODE = "mode";
+    static final String MODE_IMPORT = "import";
+    static final String MODE_CRASH = "crash";
+
     private static final int REQUEST_TREE = 1;
     private static final int REQUEST_FILES = 2;
     private static final int REQUEST_PKG = 3;
@@ -88,6 +93,7 @@ public class ImportActivity extends Activity {
     private Updater updater;
     private boolean checkDone;
     private boolean proceeded;
+    private boolean importOnly;
     // an update found while this app may not install packages yet: the player is in Settings turning that on
     private Updater.Release waitingForPermission;
 
@@ -125,10 +131,18 @@ public class ImportActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         buildUi();
-        // the page below the banner waits for the update check, so a start that finds an update never flashes the game
+        // the page below the banner waits for the update check, so a start that finds an update never flashes the menu
         content.setVisibility(View.GONE);
-        showBanner("Checking for updates...", -1, false);
         updater = new Updater(this, updateListener);
+        String mode = getIntent().getStringExtra(EXTRA_MODE);
+        if (MODE_IMPORT.equals(mode) || MODE_CRASH.equals(mode)) {
+            // from the menu: no update check, straight to the page that was asked for
+            checkDone = true;
+            importOnly = MODE_IMPORT.equals(mode);
+            proceed();
+            return;
+        }
+        showBanner("Checking for updates...", -1, false);
         updater.start();
         ui.postDelayed(checkDeadline, CHECK_DEADLINE_MS);
     }
@@ -153,7 +167,7 @@ public class ImportActivity extends Activity {
         super.onDestroy();
     }
 
-    /** The start goes on without (or after) an update: the game when its files are here, else the page that asks for them. */
+    /** The start goes on without (or after) an update: the menu when the game files are here, else the page that asks for them. */
     private void proceed() {
         if (proceeded) return;
         proceeded = true;
@@ -161,13 +175,14 @@ public class ImportActivity extends Activity {
         ui.removeCallbacks(proceedNow);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         banner.setVisibility(View.GONE);
-        if (!hasGame(this)) {
+        if (!hasGame(this) || importOnly) {
             content.setVisibility(View.VISIBLE);
+            if (importOnly) status.setText("Choose the dump folder, the two files or the fake PKG again; the old copy is replaced. Back returns to the menu.");
             return;
         }
         final CrashReport.Pending crashed = CrashReport.find(this);
         if (crashed == null) {
-            startGame();
+            openMenu();
             return;
         }
         // the game closed on its own last time: the player gets the report (CrashReport) instead of the same crash again
@@ -253,11 +268,11 @@ public class ImportActivity extends Activity {
 
         LinearLayout row2 = new LinearLayout(this);
         row2.setOrientation(LinearLayout.HORIZONTAL);
-        row2.addView(smallButton("Start the game again", new View.OnClickListener() {
+        row2.addView(smallButton("Open the menu", new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 CrashReport.markSeen(ImportActivity.this, time);
-                startGame();
+                openMenu();
             }
         }), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         row2.addView(smallButton("Import the game files again", new View.OnClickListener() {
@@ -286,8 +301,9 @@ public class ImportActivity extends Activity {
         root.addView(scroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
     }
 
-    private void startGame() {
-        startActivity(new Intent(this, PTActivity.class));
+    /** On to the main menu: one that is already open (this screen was opened from it) is brought back instead of a second one. */
+    private void openMenu() {
+        startActivity(new Intent(this, MenuActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP));
         finish();
     }
 
@@ -640,7 +656,7 @@ public class ImportActivity extends Activity {
                     @Override
                     public void run() {
                         if (message == null && hasGame(ImportActivity.this)) {
-                            startGame();
+                            openMenu();
                         } else {
                             progress.setVisibility(View.GONE);
                             setBusy(false, "Copy failed: " + (message == null ? "the files are incomplete" : message));
@@ -706,7 +722,7 @@ public class ImportActivity extends Activity {
                     @Override
                     public void run() {
                         if (message == null && hasGame(ImportActivity.this)) {
-                            startGame();
+                            openMenu();
                         } else {
                             progress.setVisibility(View.GONE);
                             setBusy(false, message == null ? "The package did not hold both archives." : message);
