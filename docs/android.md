@@ -93,13 +93,32 @@ one touched or reached with the pad) is white, wider spaced and glowing, with a 
   Share Tech with a glow, every heading in capitals with a thin light rule under it, the explanations in Share Tech Mono, and the choices as
   flat dark buttons whose chosen one has a bright outline and glowing white letters. It holds the presets, the speed (picture size,
   automatic picture size, frame rate, frame counter, v-sync), the upscaler (Upscaler, quality, sharpness), lighting, textures,
-  effects, and the main menu's sound; there are no test or diagnostic rows in it. The old second icon, "P.T. tools", is gone; its log is
+  effects, the custom GPU driver (Adreno phones only, below) and the main menu's sound; there are no test or diagnostic rows in it. The old second icon, "P.T. tools", is gone; its log is
   `ToolsActivity`, reached from the menu's Log link.
 - The app's own settings (picture size, the frame counter, the automatic size) are in `data/android-app.txt` (`AppPrefs`), a file and
   not SharedPreferences, because the menu and the game run in different processes.
 
 The app icon is the P.T. icon picture (`res/drawable-nodpi/ic_launcher_art.webp`, 78 dp wide inside the adaptive icon's 108 dp layer on a dark
 background, so a round mask still shows the whole logo), with a themed-icon layer made of the logo's strokes (`ic_launcher_mono.png`).
+
+## Custom GPU driver
+
+On an **Adreno** (Qualcomm) phone the game can use a Vulkan driver other than the phone's own, for example a Turnip (Mesa) build, as
+Winlator and the emulators do. On any other GPU the section is not shown. It is in the main menu's Settings (not in the panel over the
+game: a driver is taken when the game starts): **Install a driver (.zip)** opens Android's file picker; the .zip is the usual driver
+package (`meta.json` and the `.so`, sometimes more than one). **Use the phone's driver** removes it. Either change applies the next time
+the game starts.
+
+- The package is unpacked into the app's private storage (`files/gpu_driver/`, `GpuDriver.java`, `DriverZip.java`) and the game opens it
+  when it starts with libadrenotools (`cmake/Adrenotools.cmake`, `OpenCustomGpuDriver` in `platform/android_platform.cpp`, `vk::Context::Init`).
+  The two hook libraries adrenotools loads, `libmain_hook.so` and `libhook_impl.so`, are built beside `libmain.so` and staged by
+  `tools/android/stage.py`.
+- If the driver cannot create the Vulkan instance, the game uses the phone's own in that same run; if the game dies before the renderer is up,
+  the next start drops the driver by itself (the `.trial` file in that folder).
+- With a driver installed the window's surface is made by the driver's own `vkCreateAndroidSurfaceKHR`, because SDL makes it through the
+  system's `libvulkan.so`.
+- pt.log says which one is used: `android: custom GPU driver ...` and `vulkan: using ...`.
+- Android 11 or newer; the game needs Vulkan 1.3, so use a recent build.
 
 ## Controls
 
@@ -132,7 +151,7 @@ How a platform piece differs from the Windows and Linux ones:
 | game files | `pt-runtime/game/CUSA01127`, put there by `ImportActivity` (`android/app/src/main/java/com/ptport/android`); from a fake PKG by `PkgExtractor` |
 | updates | `Updater.java` and `UpdateBanner.java`, driven by `MenuActivity`: GitHub Releases API, a download streamed into a `PackageInstaller` session |
 | window | SDL's `SDLActivity` loads `libSDL3.so` and `libmain.so` (the `pt` target) and calls `SDL_main` |
-| Vulkan | the system's `libvulkan.so` through volk; the headers are fetched at volk's version (the NDK's are older) |
+| Vulkan | the system's `libvulkan.so` through volk (an installed custom driver, through libadrenotools, instead); the headers are fetched at volk's version (the NDK's are older) |
 | input | touch overlay in `platform/touch_controls.cpp`; SDL's mouse made of a touch is ignored in play and is the menus' pointer |
 | audio flush to zero | FPCR.FZ, as on Apple silicon |
 | exposure meter | `luminance.comp` reads the lit picture's mean with bit-level checks for NaN and infinity (Adreno's compiler does not keep them out of a comparison), limits one pixel to 2.0 of it (`SceneRenderer::LuminanceCeiling`, `PT_EV_CEILING` changes it, 0 is the desktop's no limit), and counts the pixels it left out |
