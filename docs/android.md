@@ -172,6 +172,11 @@ The desktop settings are far too heavy for a tablet GPU at the tablet's own reso
   many in each 64th of the rows (`upscale: built-in groups`), and the device's compute limits. Gradient is drawn in 64 row bands of six colours with a white frame at the display's edge. Gradient on the whole screen means the compute pass and
   the output are fine and an input is wrong; a cropped gradient means the output or the passes after it are wrong. The dispatch's sizes,
   jitter, exposure and the inputs' image layouts are in `pt.log` (`upscale: built-in dispatch`) for the first frames of a run.
+- The exposure meter and the flashlight reflection's colour are full screen draws on Android (`luminance.frag`, `reflect_colour.frag`,
+  `SceneRenderer::MeterDraw`; `PT_METER_DRAW=0` goes back to `luminance.comp` and `reflect_colour.comp`). The compute versions gave an
+  Adreno 740 half-written partial sums and garbage counters (billions of lit pixels "left out"), which held the exposure at EV 0 and
+  left the picture dark. The draw has one texel for each 32 x 32 tile; its targets are copied into the same buffers the compute shader
+  filled. The three sample pixels of the log's `exposure samples` line are not taken by the draw (they read zero).
 - The frame counter (Settings > Frame counter: Off, Frame rate, Detailed): once a second the game sends the Android message `0x8002`
   (frames a second x10 in 12 bits, GPU ms x4 in 9, CPU ms x4 in 9, averaged over the second) and `PTActivity` shows it in the top left
   corner, green at the frame limit, yellow below 95 % of it and red below 80 %; Detailed adds the GPU and CPU time of a frame and the

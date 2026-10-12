@@ -148,7 +148,9 @@ bool SceneRenderer::Init(Renderer& renderer, TextureManager& textures) {
         ctx.CreateBuffer(slot.frame_data, sizeof(gpu::FrameData), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true);
         ctx.CreateBuffer(slot.skin, sizeof(glm::mat4) * gpu::kMaxSkinMatrices, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true);
         ctx.CreateBuffer(slot.luminance, sizeof(glm::vec2) * gpu::kLuminanceEntries + sizeof(uint32_t) * gpu::kLuminanceDiagEntries,
-                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true);
+                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, true);
+        ctx.CreateBuffer(slot.meter_counts, sizeof(uint32_t) * 4 * gpu::kLuminanceGroups, VK_BUFFER_USAGE_TRANSFER_DST_BIT, true);
+        ctx.CreateBuffer(slot.meter_albedo, sizeof(uint32_t) * gpu::kLuminanceGroups, VK_BUFFER_USAGE_TRANSFER_DST_BIT, true);
         VkQueryPoolCreateInfo query{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
         query.queryType = VK_QUERY_TYPE_TIMESTAMP;
         query.queryCount = kTimestamps;
@@ -346,6 +348,21 @@ bool SceneRenderer::CreatePipelines() {
 
     luminance_ = CreateComputePipeline(device_, layout_, "luminance.comp");
     reflect_colour_ = CreateComputePipeline(device_, layout_, "reflect_colour.comp");
+    if (MeterDraw()) {
+        PipelineDesc meter;
+        meter.layout = layout_;
+        meter.fragment = "luminance.frag";
+        meter.colors = {VK_FORMAT_R32G32_SFLOAT, VK_FORMAT_R32G32B32A32_UINT, VK_FORMAT_R32_UINT};
+        luminance_draw_ = CreateGraphicsPipeline(device_, meter);
+        PipelineDesc reflection;
+        reflection.layout = layout_;
+        reflection.fragment = "reflect_colour.frag";
+        reflection.colors = {VK_FORMAT_R32G32B32A32_SFLOAT};
+        reflect_colour_draw_ = CreateGraphicsPipeline(device_, reflection);
+        if (!luminance_draw_ || !reflect_colour_draw_) {
+            LogWarn("scene renderer: the exposure meter's draw pipelines could not be made; its compute shaders are used");
+        }
+    }
 
     PipelineDesc velocity;
     velocity.layout = layout_;
@@ -467,8 +484,8 @@ bool SceneRenderer::CreatePipelines() {
 
 void SceneRenderer::DestroyPipelines() {
     VkPipeline* all[] = {&gbuffer_, &decal_, &shadow_pipeline_, &probe_, &probe_resolve_, &light_, &compose_, &forward_, &forward_emissive_, &luminance_, &bright_,
-                         &reflect_colour_, &kawase_, &bloom_add_, &kawase_sum_, &gaussian_, &tonemap_, &fxaa_, &dof_ratio_, &dof_down_, &dof_blur_, &dof_blend_,
-                         &mb_velocity_, &mb_tile_pipeline_, &mb_bake_pipeline_, &mb_mcguire_, &mb_composite_, &velocity_pipeline_, &fsblur_,
+                         &reflect_colour_, &luminance_draw_, &reflect_colour_draw_, &kawase_, &bloom_add_, &kawase_sum_, &gaussian_, &tonemap_, &fxaa_, &dof_ratio_,
+                         &dof_down_, &dof_blur_, &dof_blend_, &mb_velocity_, &mb_tile_pipeline_, &mb_bake_pipeline_, &mb_mcguire_, &mb_composite_, &velocity_pipeline_, &fsblur_,
                          &banding_, &screen_fx_, &debug_, &occlusion_, &occlusion_blur_, &reflect_make_, &reflect_blend_, &vfx_composite_, &vfx_depth_down_,
                          &mirror_temporal_pipeline_, &reflect_layer_pipeline_, &reflect_temporal_pipeline_, &subliminal_string_};
     for (VkPipeline* p : all) {
@@ -577,6 +594,8 @@ void SceneRenderer::Shutdown() {
         ctx.DestroyBuffer(slot.frame_data);
         ctx.DestroyBuffer(slot.skin);
         ctx.DestroyBuffer(slot.luminance);
+        ctx.DestroyBuffer(slot.meter_counts);
+        ctx.DestroyBuffer(slot.meter_albedo);
         vkDestroyQueryPool(device_, slot.queries, nullptr);
         vkDestroyQueryPool(device_, slot.upscale_queries, nullptr);
     }
@@ -599,7 +618,8 @@ bool SceneRenderer::CreateTarget(RenderTarget& target, VkFormat format, VkExtent
 
 void SceneRenderer::DestroyTargets() {
     vk::Context& ctx = renderer_->Context();
-    RenderTarget* targets[] = {&albedo_, &normal_, &material_, &depth_, &diffuse_, &specular_, &probe_acc_, &hdr_, &bloom_[0], &bloom_[1], &bloom_[2],
+    RenderTarget* targets[] = {&meter_partial_, &meter_counts_, &meter_albedo_, &reflect_sample_,
+                               &albedo_, &normal_, &material_, &depth_, &diffuse_, &specular_, &probe_acc_, &hdr_, &bloom_[0], &bloom_[1], &bloom_[2],
                                &flare_, &ldr_[0], &ldr_[1], &history_, &mirror_, &ao_[0], &ao_[1], &refmap_, &hdr_copy_, &particles_,
                                &particles_near_, &particles_far_, &near_far_depth_, &near_far_depth_attachment_, &dof_half_,
                                &dof_quarter_[0], &dof_quarter_[1], &dof_eighth_[0], &dof_eighth_[1], &velocity_, &object_velocity_,
@@ -645,7 +665,14 @@ bool SceneRenderer::EnsureTargets(VkExtent2D extent, VkExtent2D output, bool ups
     const uint32_t bloom_width = std::max(1u, static_cast<uint32_t>(std::lround(270.0 * output.width / std::max(output.height, 1u))));
     const VkExtent2D quarter{bloom_width, 270u};
     const VkImageAspectFlags c = VK_IMAGE_ASPECT_COLOR_BIT;
-    bool ok = CreateTarget(albedo_, kAlbedoFormat, extent, dumped, c) && CreateTarget(normal_, kNormalFormat, extent, dumped, c) &&
+    // one texel for each 32 x 32 tile of the lit picture (RecordLuminanceDraw), and one for the flashlight reflection's colour
+    const VkExtent2D tiles{(extent.width + 31) / 32, (extent.height + 31) / 32};
+    const VkImageUsageFlags meter = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    bool ok = (!MeterDraw() || (CreateTarget(meter_partial_, VK_FORMAT_R32G32_SFLOAT, tiles, meter, c) &&
+                                CreateTarget(meter_counts_, VK_FORMAT_R32G32B32A32_UINT, tiles, meter, c) &&
+                                CreateTarget(meter_albedo_, VK_FORMAT_R32_UINT, tiles, meter, c) &&
+                                CreateTarget(reflect_sample_, VK_FORMAT_R32G32B32A32_SFLOAT, {1, 1}, meter, c))) &&
+              CreateTarget(albedo_, kAlbedoFormat, extent, dumped, c) && CreateTarget(normal_, kNormalFormat, extent, dumped, c) &&
               CreateTarget(material_, kMaterialFormat, extent, dumped, c) &&
               CreateTarget(depth_, kDepthFormat, extent,
                            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
@@ -1225,6 +1252,21 @@ void SceneRenderer::ReadTimestamps(FrameSlot& slot) {
     stats_.gpu_ms = span(0, 6);
 }
 
+bool SceneRenderer::MeterDraw() {
+    static const bool draw = [] {
+#ifdef __ANDROID__
+        bool value = true;
+#else
+        bool value = false;
+#endif
+        if (const char* text = std::getenv("PT_METER_DRAW")) {
+            value = std::atoi(text) != 0;
+        }
+        return value;
+    }();
+    return draw;
+}
+
 float SceneRenderer::LuminanceCeiling() {
     static const float ceiling = [] {
 #ifdef __ANDROID__
@@ -1274,6 +1316,22 @@ uint32_t SceneRenderer::SumLuminance(const FrameSlot& slot, double& sum, double&
 SceneRenderer::LuminanceDiag SceneRenderer::ReadLuminanceDiag(const FrameSlot& slot) const {
     LuminanceDiag out;
     if (!slot.luminance.mapped) {
+        return out;
+    }
+    if (slot.meter_drawn && slot.meter_counts.mapped && slot.meter_albedo.mapped) {
+        // drawn: one texel of counters and one of the albedo sum for each tile (the three sample pixels are not taken)
+        vk::Context& ctx = renderer_->Context();
+        vmaInvalidateAllocation(ctx.allocator, slot.meter_counts.allocation, 0, VK_WHOLE_SIZE);
+        vmaInvalidateAllocation(ctx.allocator, slot.meter_albedo.allocation, 0, VK_WHOLE_SIZE);
+        const uint32_t* counts = static_cast<const uint32_t*>(slot.meter_counts.mapped);
+        const uint32_t* albedo = static_cast<const uint32_t*>(slot.meter_albedo.mapped);
+        for (uint32_t i = 0; i < slot.luminance_groups; ++i) {
+            out.no_depth += counts[4 * i];
+            out.non_finite += counts[4 * i + 1];
+            out.huge += counts[4 * i + 2];
+            out.black += counts[4 * i + 3];
+            out.albedo += albedo[i];
+        }
         return out;
     }
     const uint32_t* words = reinterpret_cast<const uint32_t*>(static_cast<const char*>(slot.luminance.mapped) +

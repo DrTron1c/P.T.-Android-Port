@@ -50,12 +50,38 @@ void SceneRenderer::RecordReflectionSample(VkCommandBuffer cmd, const SceneLight
         uv[i] = glm::vec2(clip.x, clip.y) / w * 0.5f + 0.5f;
     }
     UseTargets(cmd, {{&hdr_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}});
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, reflect_colour_);
-    BindSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE);
     gpu::PassPush push;
     push.ids = glm::uvec4(gpu::kImgHdr, gpu::kReflectionReadback, 0, 0);
     push.f0 = glm::vec4(uv[0], uv[1]);
     push.f1 = glm::vec4(uv[2], uv[3]);
+    if (MeterDraw() && reflect_colour_draw_ && reflect_sample_.Valid()) {
+        // one texel drawn (reflect_colour.frag) and copied to the two vec2 the compute shader writes: red, green, blue, 1
+        UseTargets(cmd, {{&reflect_sample_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL}});
+        BeginPass(cmd, VkExtent2D{1, 1}, {{&reflect_sample_, true, {}}});
+        BindSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS);
+        Fullscreen(cmd, reflect_colour_draw_, push);
+        vkCmdEndRendering(cmd);
+        UseTargets(cmd, {{&reflect_sample_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL}});
+        VkBufferImageCopy region{};
+        region.bufferOffset = sizeof(glm::vec2) * gpu::kReflectionReadback;
+        region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        region.imageExtent = {1, 1, 1};
+        vkCmdCopyImageToBuffer(cmd, reflect_sample_.image.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                               slots_[renderer_->FrameIndex()].luminance.buffer, 1, &region);
+        VkMemoryBarrier2 copied{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+        copied.srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
+        copied.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+        copied.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
+        copied.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
+        VkDependencyInfo copied_dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+        copied_dependency.memoryBarrierCount = 1;
+        copied_dependency.pMemoryBarriers = &copied;
+        vkCmdPipelineBarrier2(cmd, &copied_dependency);
+        slots_[renderer_->FrameIndex()].reflection_sampled = true;
+        return;
+    }
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, reflect_colour_);
+    BindSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE);
     PushConstants(cmd, &push, sizeof(push));
     vkCmdDispatch(cmd, 1, 1, 1);
     VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};

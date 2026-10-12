@@ -266,12 +266,17 @@ private:
         vk::Buffer frame_data;
         vk::Buffer skin;
         vk::Buffer luminance;
+        // the exposure meter drawn as a pass (MeterDraw): the tiles' counters and albedo sums, copied from the meter's targets
+        vk::Buffer meter_counts;
+        vk::Buffer meter_albedo;
         VkDescriptorSet set = VK_NULL_HANDLE;
         VkDescriptorSet post_set = VK_NULL_HANDLE;
         VkQueryPool queries = VK_NULL_HANDLE;
         VkQueryPool upscale_queries = VK_NULL_HANDLE;
         bool upscale_timed = false;
         uint32_t luminance_groups = 0;
+        // the slot's last meter reading was drawn (its counters are in meter_counts and meter_albedo), not computed
+        bool meter_drawn = false;
         float exposure_used = 1.0f;
         bool measured = false;
         bool timed = false;
@@ -357,6 +362,11 @@ private:
         float samples[3][8] = {};
     };
     LuminanceDiag ReadLuminanceDiag(const FrameSlot& slot) const;
+    // Whether the exposure meter and the flashlight reflection's colour are drawn as full screen passes (luminance.frag,
+    // reflect_colour.frag) instead of run as compute shaders. Android does: on its first test GPU, an Adreno 740, compute shaders gave
+    // only partly written results (docs/android.md). PT_METER_DRAW=0 or 1 overrides.
+    static bool MeterDraw();
+    void RecordLuminanceDraw(VkCommandBuffer cmd, uint32_t groups_x, uint32_t groups_y);
     void LogLuminanceDiag(const LuminanceDiag& diag, double valid, uint32_t unusable, uint32_t groups) const;
     // The most one pixel adds to the exposure meter's mean (the lit picture after the exposure), 0 for no limit. Android has one, as a
     // guard against a few extreme pixels setting the exposure of the whole picture. PT_EV_CEILING=<value> overrides it (0 turns it off).
@@ -454,6 +464,12 @@ private:
     VkSampler samplers_[gpu::kSmpCount] = {};
 
     VkExtent2D extent_{0, 0};
+    // the exposure meter's draw: one texel for each 32 x 32 tile of the lit picture (sum and count, counters, albedo), and the one
+    // texel of the flashlight reflection's colour
+    RenderTarget meter_partial_;
+    RenderTarget meter_counts_;
+    RenderTarget meter_albedo_;
+    RenderTarget reflect_sample_;
     RenderTarget albedo_;
     RenderTarget normal_;
     RenderTarget material_;
@@ -542,6 +558,9 @@ private:
     VkPipeline forward_ = VK_NULL_HANDLE;
     VkPipeline luminance_ = VK_NULL_HANDLE;
     VkPipeline reflect_colour_ = VK_NULL_HANDLE;
+    // the draw versions of the two (MeterDraw); null when a pipeline could not be made, which leaves the compute shader
+    VkPipeline luminance_draw_ = VK_NULL_HANDLE;
+    VkPipeline reflect_colour_draw_ = VK_NULL_HANDLE;
     VkPipeline occlusion_ = VK_NULL_HANDLE;
     VkPipeline occlusion_blur_ = VK_NULL_HANDLE;
     VkPipeline bright_ = VK_NULL_HANDLE;

@@ -1696,6 +1696,45 @@ void SceneRenderer::RecordLighting(VkCommandBuffer cmd, const ViewSetup& view) {
     UseTargets(cmd, {{&diffuse_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}, {&specular_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}});
 }
 
+// The exposure meter as a full screen pass over one texel per 32 x 32 tile (luminance.frag gives what luminance.comp gives), its three
+// targets copied into the slot's buffers for ReadMeasurements. On an Adreno 740 the compute shader's results came partly back unwritten
+// and its counters as garbage; draws are what that GPU runs correctly for the rest of the game.
+void SceneRenderer::RecordLuminanceDraw(VkCommandBuffer cmd, uint32_t gx, uint32_t gy) {
+    FrameSlot& slot = slots_[renderer_->FrameIndex()];
+    const VkExtent2D tiles{gx, gy};
+    UseTargets(cmd, {{&meter_partial_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL},
+                     {&meter_counts_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL},
+                     {&meter_albedo_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL}});
+    BeginPass(cmd, tiles, {{&meter_partial_, true, {}}, {&meter_counts_, true, {}}, {&meter_albedo_, true, {}}});
+    BindSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS);
+    gpu::PassPush push;
+    const float ceiling = LuminanceCeiling();
+    push.f0.x = ceiling;
+    push.f0.y = ceiling > 0.0f ? ceiling : 2.0f;
+    Fullscreen(cmd, luminance_draw_, push);
+    vkCmdEndRendering(cmd);
+    UseTargets(cmd, {{&meter_partial_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL},
+                     {&meter_counts_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL},
+                     {&meter_albedo_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL}});
+    VkBufferImageCopy region{};
+    region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    region.imageExtent = {gx, gy, 1};
+    vkCmdCopyImageToBuffer(cmd, meter_partial_.image.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, slot.luminance.buffer, 1, &region);
+    vkCmdCopyImageToBuffer(cmd, meter_counts_.image.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, slot.meter_counts.buffer, 1, &region);
+    vkCmdCopyImageToBuffer(cmd, meter_albedo_.image.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, slot.meter_albedo.buffer, 1, &region);
+    VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+    barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
+    barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    barrier.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
+    barrier.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
+    VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    dependency.memoryBarrierCount = 1;
+    dependency.pMemoryBarriers = &barrier;
+    vkCmdPipelineBarrier2(cmd, &dependency);
+    slot.luminance_groups = gx * gy;
+    slot.meter_drawn = true;
+}
+
 void SceneRenderer::RecordLuminance(VkCommandBuffer cmd) {
     FrameSlot& slot = slots_[renderer_->FrameIndex()];
     const uint32_t gx = (extent_.width + 31) / 32;
@@ -1703,6 +1742,12 @@ void SceneRenderer::RecordLuminance(VkCommandBuffer cmd) {
     if (gx * gy > 16384) {
         return;
     }
+    if (MeterDraw() && luminance_draw_ && meter_partial_.Valid() && meter_counts_.Valid() && meter_albedo_.Valid() && slot.meter_counts.buffer &&
+        slot.meter_albedo.buffer) {
+        RecordLuminanceDraw(cmd, gx, gy);
+        return;
+    }
+    slot.meter_drawn = false;
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, luminance_);
     BindSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE);
     // the counters after the sums start at zero (luminance.comp adds into them); the slot's last frame has been read by now
