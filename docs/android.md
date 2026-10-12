@@ -46,11 +46,21 @@ The check reads only published releases, which is why the CI publishes a (pre)re
 
 ## The main menu
 
-`MenuActivity` (after the launcher's update check and the crash report, when there is one): Start, New game, Load save, Settings, and small links
-to the game files (choose them again), a new update check and the log. The look is code only (`AtmosphereView`, `MenuStyle`): a dark
-room with a lamp that flickers and now and then goes out, dust, a vignette and film grain; no image or font is used. The pad moves
-between the entries (D-pad or stick; A presses, B goes back).
+`MenuActivity` (after the launcher's update check and the crash report, when there is one): Start, New game, Load save, Settings, with the
+line "Continue: Floor ... - N of 5 cleared" under Start, and small links (game files, a new update check, the log) and the build number
+at the bottom right. The words "PC port" and "runs from your own copy of the game" are not on the menu (nor in the app's name: the
+launcher label is "P.T."). The look is the title screen's: the hallway with its one bulb, the brush logo, and the entries in Share Tech
+(the line under Start in Share Tech Mono; both SIL OFL 1.1, the licences are in `res/raw`). The chosen entry (Start at first, then the
+one touched or reached with the pad) is white, wider spaced and glowing, with a thin rule above and below it.
 
+- The picture is `res/drawable-nodpi/menu_hall.webp`, a 1672 x 941 still of the hallway with the logo and every word taken out of it
+  (the wall behind them filled in), and `menu_logo.png` is the logo alone with an alpha channel. `MenuBackdrop` draws the picture as tall as
+  the screen (centred and faded at its sides on a wider screen, cut off at the right on a narrower one) and lights it with a level that
+  holds near 1 with a faint tremble, stutters through two to six quick dips every second or few, and about every 15 to 30 seconds nearly
+  goes out for a moment; the logo follows the bulb a little. `MenuStage` places everything by the picture's own pixel measures scaled to
+  the screen's height, and makes the entries up to 30% bigger on a small screen (the letters are never under 14 dp). `MenuEntry` is one
+  line. The other screens (Settings, Load save, the log) keep the code-drawn `AtmosphereView` backdrop, which holds still.
+- The pad moves between the entries (D-pad or stick; A presses, B goes back).
 - **Start** starts the game, which loads its own save. The game runs in its own process (`android:process=":game"` on `PTActivity`):
   SDL cannot run the game's main function twice in one process, so the game's process ends with the game: when `main` returns the
   native code calls `_exit` with the game's result (`PtMain` in `main.cpp`; 0 is a normal end, which the crash report does not count, any
@@ -67,7 +77,8 @@ between the entries (D-pad or stick; A presses, B goes back).
 - The app's own settings (picture size, the frame counter, the automatic size) are in `data/android-app.txt` (`AppPrefs`), a file and
   not SharedPreferences, because the menu and the game run in different processes.
 
-The app icon is an original drawing (`res/drawable/ic_launcher_*.xml`, an adaptive icon with a themed-icon layer): a keyhole in a warm glow.
+The app icon is the P.T. icon picture (`res/drawable-nodpi/ic_launcher_art.webp`, 78 dp wide inside the adaptive icon's 108 dp layer on a dark
+background, so a round mask still shows the whole logo), with a themed-icon layer made of the logo's strokes (`ic_launcher_mono.png`).
 
 ## Controls
 

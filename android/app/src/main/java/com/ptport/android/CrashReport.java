@@ -119,7 +119,7 @@ final class CrashReport {
     static String build(Context context, Pending pending) {
         StringBuilder out = new StringBuilder(16384);
         ApplicationExitInfo info = pending.info;
-        out.append("P.T. PC Port crash report\n");
+        out.append("P.T. crash report\n");
         try {
             header(context, out);
         } catch (Throwable t) {
@@ -251,7 +251,7 @@ final class CrashReport {
     /** The log screen's text: no crash, just how the game is doing (device, settings, frame rate, the log). Not for the main thread. */
     static String buildLog(Context context) {
         StringBuilder out = new StringBuilder(12288);
-        out.append("P.T. PC Port log\n");
+        out.append("P.T. log\n");
         try {
             header(context, out);
         } catch (Throwable t) {

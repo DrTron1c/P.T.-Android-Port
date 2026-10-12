@@ -85,7 +85,7 @@ public class ToolsActivity extends ThemedActivity {
             public void onClick(View view) {
                 Intent send = new Intent(Intent.ACTION_SEND);
                 send.setType("text/plain");
-                send.putExtra(Intent.EXTRA_SUBJECT, "P.T. PC Port log");
+                send.putExtra(Intent.EXTRA_SUBJECT, "P.T. log");
                 send.putExtra(Intent.EXTRA_TEXT, report);
                 try {
                     startActivity(Intent.createChooser(send, "Share the log"));

@@ -255,7 +255,7 @@ public class ImportActivity extends Activity {
             public void onClick(View view) {
                 Intent send = new Intent(Intent.ACTION_SEND);
                 send.setType("text/plain");
-                send.putExtra(Intent.EXTRA_SUBJECT, "P.T. PC Port crash report");
+                send.putExtra(Intent.EXTRA_SUBJECT, "P.T. crash report");
                 send.putExtra(Intent.EXTRA_TEXT, report);
                 try {
                     startActivity(Intent.createChooser(send, "Share the report"));
@@ -391,7 +391,7 @@ public class ImportActivity extends Activity {
         column.setGravity(Gravity.CENTER_HORIZONTAL);
 
         TextView title = new TextView(this);
-        title.setText("P.T. PC Port");
+        title.setText("P.T.");
         title.setTextSize(26);
         title.setTextColor(Color.WHITE);
         column.addView(title);

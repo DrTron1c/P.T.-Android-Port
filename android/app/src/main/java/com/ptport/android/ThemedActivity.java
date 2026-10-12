@@ -8,7 +8,7 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
 /**
- * The base of the menu screens: the dark backdrop (AtmosphereView), the system bars hidden, and the pad's buttons working on a screen
+ * The base of the menu screens: the dark backdrop (AtmosphereView, or the screen's own), the system bars hidden, and the pad's buttons working on a screen
  * made of views (A presses the chosen one, B goes back).
  */
 abstract class ThemedActivity extends Activity {
@@ -19,14 +19,21 @@ abstract class ThemedActivity extends Activity {
         return true;
     }
 
+    /** The backdrop behind the screen; null for a screen that brings its own (the main menu's flickering hallway). */
+    protected View createBackdrop() {
+        return new AtmosphereView(this, calmBackdrop());
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         MenuStyle.immersive(this);
         root = new FrameLayout(this);
         root.setBackgroundColor(0xFF060504);
-        root.addView(new AtmosphereView(this, calmBackdrop()),
-                new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        View backdrop = createBackdrop();
+        if (backdrop != null) {
+            root.addView(backdrop, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        }
         setContentView(root);
     }
 

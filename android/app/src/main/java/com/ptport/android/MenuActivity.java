@@ -10,9 +10,11 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 import android.widget.TextView;
@@ -20,11 +22,13 @@ import android.widget.TextView;
 import java.util.List;
 
 /**
- * The main menu: Start, New game, Load save and Settings, over the dark backdrop. The launcher (ImportActivity) checks for an update and for
- * the game files first and then opens this; the game runs in its own process and returns here when it ends.
+ * The main menu: Start, New game, Load save and Settings, over the hallway with its flickering bulb (MenuBackdrop, laid out by MenuStage).
+ * The launcher (ImportActivity) checks for an update and for the game files first and then opens this; the game runs in its own process and
+ * returns here when it ends.
  */
 public class MenuActivity extends ThemedActivity {
     private final Handler ui = new Handler(Looper.getMainLooper());
+    private MenuEntry[] entries;
     private TextView startNote;
     private TextView loading;
     private boolean starting;
@@ -42,9 +46,10 @@ public class MenuActivity extends ThemedActivity {
         }
     };
 
+    /** The menu brings its own backdrop, the flickering hallway (MenuBackdrop, placed by MenuStage). */
     @Override
-    protected boolean calmBackdrop() {
-        return false;
+    protected View createBackdrop() {
+        return null;
     }
 
     @Override
@@ -64,6 +69,7 @@ public class MenuActivity extends ThemedActivity {
         }
         starting = false;
         loading.setVisibility(View.GONE);
+        choose(entries[0]);
         showSaveNote();
         // the game's ending is recorded by Android a moment after it happens
         ui.removeCallbacks(crashCheck);
@@ -92,76 +98,58 @@ public class MenuActivity extends ThemedActivity {
     }
 
     private void buildUi() {
-        float density = getResources().getDisplayMetrics().density;
-        int screenWidth = getResources().getDisplayMetrics().widthPixels;
-        int side = Math.max(MenuStyle.dp(this, 32), (int) (screenWidth * 0.09f));
+        MenuBackdrop backdrop = new MenuBackdrop(this);
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.drawable.menu_logo);
+        logo.setScaleType(ImageView.ScaleType.FIT_XY);
+        logo.setContentDescription("P.T.");
+        // the logo glows with the bulb
+        backdrop.setFollower(logo);
 
-        // A vertical LinearLayout that wraps its content takes the width of its widest child that does not fill the parent: with every
-        // child filling it and a spacer of a fixed width, the column was 1 pixel wide and nothing showed (build 16). The spacers fill the
-        // parent too, and the column has a width of its own to start from.
-        LinearLayout column = new LinearLayout(this);
-        column.setOrientation(LinearLayout.VERTICAL);
-        column.setMinimumWidth(MenuStyle.dp(this, 320));
+        entries = new MenuEntry[] {
+            entry("Start", new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    startGame();
+                }
+            }),
+            entry("New game", new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    newGame();
+                }
+            }),
+            entry("Load save", new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    startActivity(new Intent(MenuActivity.this, SavesActivity.class));
+                }
+            }),
+            entry("Settings", new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    startActivity(new Intent(MenuActivity.this, SettingsActivity.class));
+                }
+            }),
+        };
+        choose(entries[0]);
 
-        TextView title = MenuStyle.text(this, "P.T. PC PORT", 40, MenuStyle.INK, true);
-        title.setLetterSpacing(0.28f);
-        title.setShadowLayer(MenuStyle.dp(this, 14), 0, 0, 0x99C9A15B);
-        column.addView(title);
-
-        TextView subtitle = MenuStyle.text(this, "Runs from your own copy of the game", 13, MenuStyle.FAINT, true);
-        subtitle.setLetterSpacing(0.08f);
-        subtitle.setPadding(MenuStyle.dp(this, 3), MenuStyle.dp(this, 6), 0, MenuStyle.dp(this, 36));
-        column.addView(subtitle);
-
-        MenuStyle.Entry start = new MenuStyle.Entry(this, "Start", 30);
-        start.setOnClickListener(new View.OnClickListener() {
+        // the line under Start: what Start continues from
+        startNote = new TextView(this);
+        startNote.setTypeface(getResources().getFont(R.font.share_tech_mono));
+        startNote.setIncludeFontPadding(false);
+        startNote.setSingleLine(true);
+        startNote.setTextColor(0xFFBABDB2);
+        startNote.setLetterSpacing(0.05f);
+        startNote.setClickable(true);
+        startNote.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 startGame();
             }
         });
-        column.addView(start);
-        startNote = MenuStyle.text(this, "", 12, MenuStyle.DIM, true);
-        startNote.setPadding(MenuStyle.dp(this, 18), 0, 0, MenuStyle.dp(this, 14));
-        column.addView(startNote);
 
-        MenuStyle.Entry fresh = new MenuStyle.Entry(this, "New game", 30);
-        fresh.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                newGame();
-            }
-        });
-        column.addView(fresh);
-        View freshGap = new View(this);
-        column.addView(freshGap, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, MenuStyle.dp(this, 14)));
-
-        MenuStyle.Entry load = new MenuStyle.Entry(this, "Load save", 30);
-        load.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                startActivity(new Intent(MenuActivity.this, SavesActivity.class));
-            }
-        });
-        column.addView(load);
-        View gap = new View(this);
-        column.addView(gap, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, MenuStyle.dp(this, 14)));
-
-        MenuStyle.Entry settings = new MenuStyle.Entry(this, "Settings", 30);
-        settings.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                startActivity(new Intent(MenuActivity.this, SettingsActivity.class));
-            }
-        });
-        column.addView(settings);
-
-        FrameLayout.LayoutParams columnParams = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER_VERTICAL | Gravity.START);
-        columnParams.leftMargin = side;
-        root.addView(column, columnParams);
-
-        // the small links along the bottom
+        // the small links along the bottom, and the build
         LinearLayout footer = new LinearLayout(this);
         footer.setOrientation(LinearLayout.HORIZONTAL);
         footer.setGravity(Gravity.CENTER_VERTICAL);
@@ -183,32 +171,51 @@ public class MenuActivity extends ThemedActivity {
                 startActivity(new Intent(MenuActivity.this, ToolsActivity.class));
             }
         }));
-        FrameLayout.LayoutParams footerParams = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM | Gravity.START);
-        footerParams.leftMargin = side - MenuStyle.dp(this, 12);
-        footerParams.bottomMargin = MenuStyle.dp(this, 22);
-        root.addView(footer, footerParams);
+        TextView version = MenuStyle.text(this, versionText(), 12, 0xFF7C766A, false);
+        version.setTypeface(getResources().getFont(R.font.share_tech_mono));
+        version.setShadowLayer(MenuStyle.dp(this, 3), 0, 0, 0xCC000000);
+        version.setPadding(MenuStyle.dp(this, 12), 0, 0, 0);
+        footer.addView(version);
 
-        TextView version = MenuStyle.text(this, versionText(), 12, MenuStyle.FAINT, true);
-        FrameLayout.LayoutParams versionParams = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM | Gravity.END);
-        versionParams.rightMargin = MenuStyle.dp(this, 26);
-        versionParams.bottomMargin = MenuStyle.dp(this, 30);
-        root.addView(version, versionParams);
-
-        loading = MenuStyle.text(this, "Loading...", 22, MenuStyle.INK, true);
+        loading = MenuStyle.text(this, "Loading...", 22, MenuStyle.INK, false);
+        loading.setTypeface(getResources().getFont(R.font.share_tech));
         loading.setLetterSpacing(0.2f);
         loading.setShadowLayer(MenuStyle.dp(this, 12), 0, 0, 0xAAC9A15B);
         loading.setVisibility(View.GONE);
-        FrameLayout.LayoutParams loadingParams = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM | Gravity.END);
-        loadingParams.rightMargin = MenuStyle.dp(this, 36);
-        loadingParams.bottomMargin = MenuStyle.dp(this, 70);
-        root.addView(loading, loadingParams);
+
+        root.addView(new MenuStage(this, backdrop, logo, entries, startNote, footer, loading),
+                new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    /** One line of the menu. The line that is touched, or reached with the pad, becomes the chosen one. */
+    private MenuEntry entry(String label, View.OnClickListener onClick) {
+        final MenuEntry line = new MenuEntry(this, label);
+        line.setOnClickListener(onClick);
+        line.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View view, MotionEvent event) {
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN) choose(line);
+                return false;
+            }
+        });
+        line.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View view, boolean hasFocus) {
+                if (hasFocus) choose(line);
+            }
+        });
+        return line;
+    }
+
+    private void choose(MenuEntry chosen) {
+        for (MenuEntry line : entries) line.setLit(line == chosen);
     }
 
     private View link(String label, View.OnClickListener listener) {
-        TextView view = MenuStyle.text(this, label, 13, MenuStyle.DIM, true);
+        TextView view = MenuStyle.text(this, label, 12, MenuStyle.DIM, false);
+        view.setTypeface(getResources().getFont(R.font.share_tech));
+        view.setLetterSpacing(0.08f);
+        view.setShadowLayer(MenuStyle.dp(this, 3), 0, 0, 0xCC000000);
         view.setFocusable(true);
         view.setClickable(true);
         view.setPadding(MenuStyle.dp(this, 12), MenuStyle.dp(this, 10), MenuStyle.dp(this, 12), MenuStyle.dp(this, 10));

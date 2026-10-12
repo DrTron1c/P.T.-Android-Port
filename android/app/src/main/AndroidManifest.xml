@@ -15,7 +15,7 @@
 
     <application
         android:allowBackup="false"
-        android:label="P.T. PC Port"
+        android:label="P.T."
         android:hasCode="true"
         android:extractNativeLibs="true"
         android:largeHeap="true"
