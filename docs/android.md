@@ -118,10 +118,15 @@ the game starts.
 - With a driver installed the window's surface is made by the driver's own `vkCreateAndroidSurfaceKHR`, because SDL makes it through the
   system's `libvulkan.so`.
 - pt.log says which one is used: `android: custom GPU driver ...` and `vulkan: using ...`.
-- With a custom driver each frame is finished on the GPU before it is presented (`vkQueueWaitIdle` in `Context::QueuePresent`,
-  `wait_idle_before_present`). With Turnip on the Adreno 740 (Xiaomi Pad 6S Pro, Android 16) frames were shown before they were
-  drawn: black, red stripes and blocks over the scene and the HUD, now and then a whole frame. The wait costs a little speed, because
-  the CPU no longer prepares the next frame while the GPU draws this one; pt.log says `each frame is finished before it is presented`.
+- With a custom driver the frames reach the screen through the CPU, not a Vulkan swapchain (`CpuPresent` in `vk_context.cpp`,
+  `Context::cpu_present`). With Turnip on the Adreno 740 (Xiaomi Pad 6S Pro, Android 16) the picture came out in black blocks and
+  red stripes, the scene and the touch buttons alike, with a whole frame now and then, with HDR on or off, and waiting for the GPU
+  before presenting (1.02) did not change it: Turnip writes the system's swapchain buffers (gralloc) in a layout the compositor does
+  not read them in. So the game draws into images of its own, each frame is copied into a host buffer and from there, row by row,
+  into the window's buffer locked for the CPU (`ANativeWindow_lock`, RGBX), which is linear whatever the driver makes of gralloc. The
+  Vulkan surface is destroyed after the device is made, because it holds the window for a swapchain. HDR is off in this mode, and the
+  copy costs a millisecond or two a frame. pt.log says `frames are copied into the window by the CPU` and `CPU presentation into the
+  window`.
 - Android 11 or newer; the game needs Vulkan 1.3, so use a recent build.
 
 ## Controls

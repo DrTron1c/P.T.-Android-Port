@@ -28,6 +28,8 @@
 #include "engine/core/log.h"
 #include "engine/platform/os.h"
 #ifdef __ANDROID__
+#include <android/native_window.h>
+
 #include "engine/platform/android_platform.h"
 #endif
 #include "engine/render/hdr_output.h"
@@ -38,6 +40,219 @@ extern bool g_checkpoints;
 }
 
 namespace pt::vk {
+
+#ifdef __ANDROID__
+namespace {
+
+// The frames of a custom GPU driver, shown through the CPU (Context::cpu_present, vk_context.h). Turnip wrote the buffers of the
+// system's swapchain in a layout the compositor did not read them in, so here it never touches them: the game draws into images of
+// its own, each frame is copied into a host buffer, and from there into the window's buffer, locked for the CPU (a linear buffer
+// whatever the driver thinks of gralloc). The window must not be held by a Vulkan surface meanwhile (Context::Init lets it go).
+class CpuPresent final : public SwapchainHooks {
+public:
+    CpuPresent(Context& ctx, SDL_Window* window) : ctx_(ctx), window_(window) {}
+    ~CpuPresent() override {
+        Release();
+        if (native_) ANativeWindow_release(native_);
+    }
+
+    VkResult CreateSwapchain(const VkSwapchainCreateInfoKHR& info, VkSwapchainKHR& handle) override {
+        Release();
+        format_ = info.imageFormat;
+        extent_ = info.imageExtent;
+        images_.resize(std::max(2u, info.minImageCount));
+        for (Image& image : images_) {
+            if (!ctx_.CreateImage(image, format_, {extent_.width, extent_.height, 1}, info.imageUsage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT)) {
+                Release();
+                return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+            }
+        }
+        const VkDeviceSize bytes = static_cast<VkDeviceSize>(extent_.width) * extent_.height * 4;
+        if (!ctx_.CreateBuffer(readback_, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, true) || !readback_.mapped) {
+            Release();
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
+        VkCommandPoolCreateInfo pool_info{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+        pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        pool_info.queueFamilyIndex = ctx_.queue_family;
+        VkResult result = vkCreateCommandPool(ctx_.device, &pool_info, nullptr, &pool_);
+        if (result == VK_SUCCESS) {
+            VkCommandBufferAllocateInfo alloc{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+            alloc.commandPool = pool_;
+            alloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            alloc.commandBufferCount = 1;
+            result = vkAllocateCommandBuffers(ctx_.device, &alloc, &cmd_);
+        }
+        if (result == VK_SUCCESS) {
+            VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+            result = vkCreateFence(ctx_.device, &fence_info, nullptr, &fence_);
+        }
+        if (result != VK_SUCCESS) {
+            Release();
+            return result;
+        }
+        next_ = 0;
+        geometry_set_ = false;
+        handle = reinterpret_cast<VkSwapchainKHR>(static_cast<uintptr_t>(1));
+        return VK_SUCCESS;
+    }
+
+    void DestroySwapchain(VkSwapchainKHR) override { Release(); }
+
+    VkResult SwapchainImages(VkSwapchainKHR, uint32_t* count, VkImage* images) override {
+        const uint32_t have = static_cast<uint32_t>(images_.size());
+        if (!images) {
+            *count = have;
+            return VK_SUCCESS;
+        }
+        const uint32_t n = std::min(*count, have);
+        for (uint32_t i = 0; i < n; ++i) images[i] = images_[i].image;
+        *count = n;
+        return n < have ? VK_INCOMPLETE : VK_SUCCESS;
+    }
+
+    VkResult AcquireNextImage(VkSwapchainKHR, VkSemaphore semaphore, uint32_t* index) override {
+        if (images_.empty()) return VK_ERROR_OUT_OF_DATE_KHR;
+        *index = next_;
+        next_ = (next_ + 1) % static_cast<uint32_t>(images_.size());
+        if (!semaphore) return VK_SUCCESS;
+        // the image is free at once (the last present copied it out before it returned); the frame still waits on the semaphore
+        VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submit.signalSemaphoreCount = 1;
+        submit.pSignalSemaphores = &semaphore;
+        return vkQueueSubmit(ctx_.queue, 1, &submit, VK_NULL_HANDLE);
+    }
+
+    VkResult QueuePresent(VkQueue queue, const VkPresentInfoKHR& info) override {
+        if (!cmd_ || info.swapchainCount == 0 || info.pImageIndices[0] >= images_.size()) return VK_ERROR_OUT_OF_DATE_KHR;
+        const uint32_t index = info.pImageIndices[0];
+        VkResult result = vkResetFences(ctx_.device, 1, &fence_);
+        if (result == VK_SUCCESS) result = vkResetCommandBuffer(cmd_, 0);
+        VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        if (result == VK_SUCCESS) result = vkBeginCommandBuffer(cmd_, &begin);
+        if (result != VK_SUCCESS) return result;
+        // the renderer left the image in PresentLayout(), TRANSFER_SRC_OPTIMAL
+        VkBufferImageCopy region{};
+        region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        region.imageExtent = {extent_.width, extent_.height, 1};
+        vkCmdCopyImageToBuffer(cmd_, images_[index].image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, readback_.buffer, 1, &region);
+        VkBufferMemoryBarrier to_host{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        to_host.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        to_host.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        to_host.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        to_host.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        to_host.buffer = readback_.buffer;
+        to_host.size = VK_WHOLE_SIZE;
+        vkCmdPipelineBarrier(cmd_, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr, 1, &to_host, 0, nullptr);
+        result = vkEndCommandBuffer(cmd_);
+        if (result != VK_SUCCESS) return result;
+        std::vector<VkPipelineStageFlags> stages(info.waitSemaphoreCount, VK_PIPELINE_STAGE_TRANSFER_BIT);
+        VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submit.waitSemaphoreCount = info.waitSemaphoreCount;
+        submit.pWaitSemaphores = info.pWaitSemaphores;
+        submit.pWaitDstStageMask = stages.empty() ? nullptr : stages.data();
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers = &cmd_;
+        result = vkQueueSubmit(queue, 1, &submit, fence_);
+        if (result == VK_SUCCESS) result = vkWaitForFences(ctx_.device, 1, &fence_, VK_TRUE, UINT64_MAX);
+        if (result != VK_SUCCESS) return result;
+        vmaInvalidateAllocation(ctx_.allocator, readback_.allocation, 0, VK_WHOLE_SIZE);
+        if (info.pResults) info.pResults[0] = VK_SUCCESS;
+        Show(static_cast<const uint8_t*>(readback_.mapped));
+        return VK_SUCCESS;
+    }
+
+    VkImageLayout PresentLayout() const override { return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL; }
+
+private:
+    // into the window's buffer: SDL's window, followed when the system gives it a new one (held with a reference of our own)
+    void Show(const uint8_t* pixels) {
+        auto* current = static_cast<ANativeWindow*>(
+            SDL_GetPointerProperty(SDL_GetWindowProperties(window_), SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, nullptr));
+        if (current != native_) {
+            if (native_) ANativeWindow_release(native_);
+            native_ = current;
+            if (native_) ANativeWindow_acquire(native_);
+            geometry_set_ = false;
+        }
+        if (!native_) return;
+        if (!geometry_set_) {
+            geometry_set_ = true;
+            const int32_t set = ANativeWindow_setBuffersGeometry(native_, static_cast<int32_t>(extent_.width),
+                                                                 static_cast<int32_t>(extent_.height), WINDOW_FORMAT_RGBX_8888);
+            LogInfo("vulkan: CPU presentation into the window, {}x{} RGBX{}", extent_.width, extent_.height,
+                    set == 0 ? "" : std::format(" (setBuffersGeometry {})", set));
+        }
+        ANativeWindow_Buffer out{};
+        const int32_t locked = ANativeWindow_lock(native_, &out, nullptr);
+        if (locked != 0) {
+            if (!lock_failed_logged_) {
+                LogWarn("vulkan: CPU presentation: the window could not be locked ({}); nothing is shown", locked);
+                lock_failed_logged_ = true;
+            }
+            return;
+        }
+        if (out.format != WINDOW_FORMAT_RGBA_8888 && out.format != WINDOW_FORMAT_RGBX_8888) {
+            if (!format_logged_) {
+                LogWarn("vulkan: CPU presentation: the window's buffer has format {}, not RGBA; nothing is shown", out.format);
+                format_logged_ = true;
+            }
+            ANativeWindow_unlockAndPost(native_);
+            return;
+        }
+        const bool swap = format_ == VK_FORMAT_B8G8R8A8_UNORM || format_ == VK_FORMAT_B8G8R8A8_SRGB;
+        const uint32_t width = std::min(extent_.width, static_cast<uint32_t>(std::max(0, out.width)));
+        const uint32_t height = std::min(extent_.height, static_cast<uint32_t>(std::max(0, out.height)));
+        auto* bits = static_cast<uint8_t*>(out.bits);
+        for (uint32_t y = 0; y < height; ++y) {
+            const uint8_t* from = pixels + static_cast<size_t>(y) * extent_.width * 4;
+            uint8_t* to = bits + static_cast<size_t>(y) * static_cast<size_t>(out.stride) * 4;
+            if (!swap) {
+                std::memcpy(to, from, static_cast<size_t>(width) * 4);
+                continue;
+            }
+            for (uint32_t x = 0; x < width; ++x) {
+                to[x * 4 + 0] = from[x * 4 + 2];
+                to[x * 4 + 1] = from[x * 4 + 1];
+                to[x * 4 + 2] = from[x * 4 + 0];
+                to[x * 4 + 3] = 255;
+            }
+        }
+        ANativeWindow_unlockAndPost(native_);
+    }
+
+    void Release() {
+        if (!ctx_.device) return;
+        if (fence_ || cmd_ || readback_.buffer || !images_.empty()) vkDeviceWaitIdle(ctx_.device);
+        if (fence_) vkDestroyFence(ctx_.device, fence_, nullptr);
+        if (pool_) vkDestroyCommandPool(ctx_.device, pool_, nullptr);
+        fence_ = VK_NULL_HANDLE;
+        pool_ = VK_NULL_HANDLE;
+        cmd_ = VK_NULL_HANDLE;
+        ctx_.DestroyBuffer(readback_);
+        for (Image& image : images_) ctx_.DestroyImage(image);
+        images_.clear();
+    }
+
+    Context& ctx_;
+    SDL_Window* window_ = nullptr;
+    ANativeWindow* native_ = nullptr;
+    VkFormat format_ = VK_FORMAT_UNDEFINED;
+    VkExtent2D extent_{};
+    std::vector<Image> images_;
+    Buffer readback_;
+    VkCommandPool pool_ = VK_NULL_HANDLE;
+    VkCommandBuffer cmd_ = VK_NULL_HANDLE;
+    VkFence fence_ = VK_NULL_HANDLE;
+    uint32_t next_ = 0;
+    bool geometry_set_ = false;
+    bool lock_failed_logged_ = false;
+    bool format_logged_ = false;
+};
+
+}  // namespace
+#endif
 namespace {
 
 VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT,
@@ -247,8 +462,7 @@ bool Context::Init(SDL_Window* window, bool validation, bool want_hdr) {
         android::CloseCustomGpuDriver();
         if (Check(volkInitialize(), "volkInitialize")) instance_result = vkCreateInstance(&instance_info, nullptr, &instance);
     }
-    wait_idle_before_present = android::CustomGpuDriverActive();
-    if (wait_idle_before_present) LogInfo("vulkan: custom GPU driver: each frame is finished before it is presented");
+    cpu_present = window != nullptr && android::CustomGpuDriverActive();
 #endif
     if (!Check(instance_result, "vkCreateInstance")) {
         return false;
@@ -590,6 +804,15 @@ bool Context::Init(SDL_Window* window, bool validation, bool want_hdr) {
     }
 #ifdef __ANDROID__
     android::EndGpuDriverTrial();
+    if (cpu_present) {
+        // the window goes to the CPU (CpuPresent): the Vulkan surface, which holds it for a swapchain, is let go
+        cpu_present_ = std::make_unique<CpuPresent>(*this, window);
+        if (surface) {
+            vkDestroySurfaceKHR(instance, surface, nullptr);
+            surface = VK_NULL_HANDLE;
+        }
+        LogInfo("vulkan: custom GPU driver: frames are copied into the window by the CPU (no Vulkan swapchain, SDR)");
+    }
 #endif
     return true;
 }
@@ -646,6 +869,7 @@ void Context::Shutdown() {
             pipeline_cache = VK_NULL_HANDLE;
         }
         DestroySwapchain();
+        cpu_present_.reset();
         if (upload_pool_) {
             vkDestroyCommandPool(device, upload_pool_, nullptr);
         }
@@ -673,6 +897,9 @@ void Context::Shutdown() {
 bool Context::CreateSwapchain(uint32_t width, uint32_t height, bool vsync, bool want_hdr) {
     vkDeviceWaitIdle(device);
     swapchain_refused = false;
+    if (cpu_present_) {
+        return CreateCpuSwapchain(width, height);
+    }
     vsync = force_vsync ? true : (vsync && !force_vsync_off);
     VkSurfaceCapabilitiesKHR caps;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical, surface, &caps);
@@ -793,6 +1020,36 @@ bool Context::CreateSwapchain(uint32_t width, uint32_t height, bool vsync, bool 
         }
         DestroySwapchain();
     }
+    AdoptSwapchain(handle, chosen, extent, image_count);
+    return true;
+}
+
+bool Context::CreateCpuSwapchain(uint32_t width, uint32_t height) {
+    if (width == 0 || height == 0) {
+        return false;
+    }
+    DestroySwapchain();
+    const VkSurfaceFormatKHR chosen{VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
+    const VkExtent2D extent{width, height};
+    VkSwapchainCreateInfoKHR info{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
+    info.minImageCount = 2;
+    info.imageFormat = chosen.format;
+    info.imageColorSpace = chosen.colorSpace;
+    info.imageExtent = extent;
+    info.imageArrayLayers = 1;
+    info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    VkSwapchainKHR handle = VK_NULL_HANDLE;
+    if (!Check(cpu_present_->CreateSwapchain(info, handle), "CPU presentation images")) {
+        swapchain_refused = true;
+        return false;
+    }
+    swapchain_owner_ = cpu_present_.get();
+    LogInfo("vulkan: swapchain {}x{} through the CPU (custom GPU driver), format {} (SDR)", width, height, static_cast<int>(chosen.format));
+    AdoptSwapchain(handle, chosen, extent, info.minImageCount);
+    return true;
+}
+
+void Context::AdoptSwapchain(VkSwapchainKHR handle, VkSurfaceFormatKHR chosen, VkExtent2D extent, uint32_t image_count) {
     swapchain.handle = handle;
     swapchain.format = chosen.format;
     swapchain.color_space = chosen.colorSpace;
@@ -822,7 +1079,6 @@ bool Context::CreateSwapchain(uint32_t width, uint32_t height, bool vsync, bool 
         vkCreateSemaphore(device, &semaphore_info, nullptr, &semaphore);
         swapchain.render_finished.push_back(semaphore);
     }
-    return true;
 }
 
 void Context::DestroySwapchain() {
@@ -896,10 +1152,6 @@ VkResult Context::AcquireNextImage(VkSemaphore semaphore, uint32_t* index) {
 }
 
 VkResult Context::QueuePresent(const VkPresentInfoKHR& info) {
-    if (wait_idle_before_present) {
-        // the frame's commands are done before the compositor gets the image (wait_idle_before_present, vk_context.h)
-        CheckDeviceLost(vkQueueWaitIdle(queue), "wait before present");
-    }
     if (swapchain_owner_) {
         return swapchain_owner_->QueuePresent(queue, info);
     }

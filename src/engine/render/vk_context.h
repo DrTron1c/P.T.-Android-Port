@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -111,10 +112,11 @@ public:
     bool force_vsync = false;
     // the last CreateSwapchain failed in Vulkan (the surface or a swapchain hook refused it), not for want of a window size
     bool swapchain_refused = false;
-    // Android with a custom GPU driver (Turnip through libadrenotools): the frame is finished on the GPU before it is handed to the
-    // compositor. The release fence that should hold the compositor back until then did not, and frames were shown half drawn (black,
-    // in stripes and blocks, now and then whole).
-    bool wait_idle_before_present = false;
+    // Android with a custom GPU driver (Turnip through libadrenotools): the frames reach the screen through the CPU, not a Vulkan
+    // swapchain (CpuPresent in vk_context.cpp). Turnip writes the system's swapchain buffers in a layout the compositor does not
+    // read them in (on a Xiaomi Pad 6S Pro with Android 16 the picture came out in black blocks and stripes, the scene and the HUD
+    // alike, now and then whole), so the game draws into images of its own and copies each frame into the window. SDR only.
+    bool cpu_present = false;
 
     // Ray queries (the ray traced shadows PC option): set want_ray_query before Init to create the device with
     // VK_KHR_acceleration_structure, VK_KHR_ray_query, VK_KHR_deferred_host_operations and buffer device addresses
@@ -137,6 +139,11 @@ public:
     void CheckDeviceLost(VkResult result, const char* where);
 
 private:
+    // the end of CreateSwapchain: the images' views and semaphores for a swapchain made by Vulkan or by a SwapchainHooks owner
+    void AdoptSwapchain(VkSwapchainKHR handle, VkSurfaceFormatKHR chosen, VkExtent2D extent, uint32_t image_count);
+    bool CreateCpuSwapchain(uint32_t width, uint32_t height);
+
+    std::unique_ptr<SwapchainHooks> cpu_present_;
     bool hdr_off_logged_ = false;
     SDL_Window* window_ = nullptr;
     VkCommandPool upload_pool_ = VK_NULL_HANDLE;
