@@ -2,11 +2,11 @@
 # Intel on macos-15-intel. A published release gets P.T.PC.Port-macOS-arm64.zip and P.T.PC.Port-macOS-x64.zip;
 # the updater discovers these assets directly through the GitHub Releases API (docs/updates.md),
 # so nothing in tools/ci/release.py needs a Mac; run by hand (Actions > macOS > Run workflow) the zips are workflow artifacts.
+# In this fork (the Android port) a published release is the Android app's (tag v<version>, android.yml), not a macOS release, so
+# this workflow no longer starts by itself on a release; it is run by hand.
 name: macOS
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
 
 permissions:

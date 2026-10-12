@@ -1,14 +1,15 @@
-# The Android app (docs/android.md): arm64, built with the NDK on GitHub's Linux runner. A push to the android branch or a manual run
-# (Actions > Android > Run workflow) builds it; the APK is a workflow artifact and a published prerelease ("P.T. Android Port build <n>", tag
-# android-build-<n>, under Releases), which the installed app finds by itself when it starts (Updater.java). The last step always
-# pushes a short log of the run to the ci-logs branch.
+# The Android app (docs/android.md): arm64, built with the NDK on GitHub's Linux runner.
+#  - a push to the android branch (or a manual run: Actions > Android > Run workflow) builds it and keeps the APK as a workflow artifact;
+#  - a push of a tag v<version> (v1.00) does the same and then publishes the APK as the release of that version, which the installed
+#    app finds by itself when it starts (Updater.java). The tag has to match android/version.txt.
+# The last step always pushes a short log of the run to the ci-logs branch.
 name: Android
 
 on:
   push:
     branches: [android]
-    # a change that is only words (the README, the docs, the issue form) builds nothing: each build is a release, and only the
-    # newest three are kept
+    tags: ["v*"]
+    # a change that is only words (the README, the docs, the issue form) builds nothing (GitHub does not look at the paths of a tag)
     paths-ignore:
       - "**.md"
       - "docs/**"
@@ -64,35 +65,30 @@ jobs:
           name: P.T.PC.Port-Android-arm64
           path: dist/P.T.PC.Port-Android-arm64.apk
 
-      - name: Publish the release with the APK
+      - name: Publish the release
+        # only a pushed tag v<version> makes a release; a push to the branch only keeps the APK as a workflow artifact
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # The app checks these releases when it starts (Updater.java), so they are published, not drafts: a prerelease named
-          # android-build-N, N being the APK's versionCode. A prerelease is never "Latest" and the macOS workflow and the
-          # desktop updater ignore it.
-          # Drafts left by earlier versions of this step are removed.
-          for id in $(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.draft) | select(.tag_name | startswith("android-build")) | .id'); do
-            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id" || true
-          done
-          # the title and notes are only for people; the app's update check reads the tag and the asset's name
-          SUBJECT="$(git log -1 --format=%s)"
-          {
-            echo "P.T. Android Port, build $GITHUB_RUN_NUMBER: an arm64 APK built from commit $GITHUB_SHA."
-            echo
-            echo "Latest change: $SUBJECT"
-            echo
-            echo "Needs Android 10 or newer with Vulkan 1.3 and your own copy of P.T. (a dump or a fake PKG of CUSA01127); no game files are included."
-            echo "See the README for installing and docs/android.md for the details. An installed copy of the app finds this build by itself when it starts."
-          } > release-notes.md
-          gh release create "android-build-$GITHUB_RUN_NUMBER" dist/P.T.PC.Port-Android-arm64.apk \
-            --prerelease --target "$GITHUB_SHA" \
-            --title "P.T. Android Port build $GITHUB_RUN_NUMBER (${GITHUB_SHA::7})" \
-            --notes-file release-notes.md \
-            --repo "$GITHUB_REPOSITORY" || echo "release step failed (the APK is still a workflow artifact)"
-          # keep the newest three Android releases (and their tags)
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          FILE_VERSION="$(tr -d '[:space:]' < android/version.txt)"
+          if [ "$VERSION" != "$FILE_VERSION" ]; then
+            echo "the tag $GITHUB_REF_NAME does not match android/version.txt ($FILE_VERSION): no release made" >&2
+            exit 1
+          fi
+          NOTES="android/release-notes/$VERSION.md"
+          if [ ! -f "$NOTES" ]; then
+            printf 'P.T. Android Port %s.\n' "$VERSION" > release-notes.md
+            NOTES=release-notes.md
+          fi
+          # a full release (not a pre-release, and the latest one): the installed app finds it by its tag, and compares the version
+          gh release create "$GITHUB_REF_NAME" dist/P.T.PC.Port-Android-arm64.apk \
+            --verify-tag --latest --title "P.T. Android Port $VERSION" --notes-file "$NOTES" --repo "$GITHUB_REPOSITORY"
+          # the builds of the testing time (pre-releases android-build-N) and their tags are removed
           gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-            --jq '[.[] | select(.tag_name | startswith("android-build-"))] | sort_by(.created_at) | reverse | .[3:] | .[] | "\(.id) \(.tag_name)"' |
+            --jq '.[] | select(.tag_name | startswith("android-build-")) | "\(.id) \(.tag_name)"' |
           while read -r id tag; do
             gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id" || true
             gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" || true

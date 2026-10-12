@@ -1,6 +1,7 @@
 package com.ptport.android;
 
 import android.app.Activity;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.view.KeyEvent;
 import android.view.View;
@@ -8,20 +9,18 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
 /**
- * The base of the menu screens: the dark backdrop (AtmosphereView, or the screen's own), the system bars hidden, and the pad's buttons working on a screen
- * made of views (A presses the chosen one, B goes back).
+ * The base of the menu screens: the hallway of the title screen behind them, burning steadily and dim (MenuBackdrop in its calm mode, under a
+ * dark veil so the words can be read), or the screen's own backdrop; the system bars hidden; and the pad's buttons working on a screen made of
+ * views (A presses the chosen one, B goes back).
  */
 abstract class ThemedActivity extends Activity {
     protected FrameLayout root;
 
-    /** True when the backdrop should hold still (screens with text to read). */
-    protected boolean calmBackdrop() {
-        return true;
-    }
-
     /** The backdrop behind the screen; null for a screen that brings its own (the main menu's flickering hallway). */
     protected View createBackdrop() {
-        return new AtmosphereView(this, calmBackdrop());
+        MenuBackdrop backdrop = new MenuBackdrop(this);
+        backdrop.setCalm(true);
+        return backdrop;
     }
 
     @Override
@@ -33,6 +32,10 @@ abstract class ThemedActivity extends Activity {
         View backdrop = createBackdrop();
         if (backdrop != null) {
             root.addView(backdrop, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            // the veil: darkest in the middle, where the words are
+            View veil = new View(this);
+            veil.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[] { 0xB8060504, 0xEE060504, 0xB8060504 }));
+            root.addView(veil, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         }
         setContentView(root);
     }

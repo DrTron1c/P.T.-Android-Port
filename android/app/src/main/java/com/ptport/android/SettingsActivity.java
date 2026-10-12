@@ -35,6 +35,7 @@ public class SettingsActivity extends ThemedActivity {
         header.addView(back);
         android.widget.TextView title = MenuStyle.text(this, "SETTINGS", 24, MenuStyle.INK, true);
         title.setLetterSpacing(0.25f);
+        title.setShadowLayer(MenuStyle.dp(this, 7), 0, 0, MenuStyle.GLOW);
         title.setPadding(pad, 0, 0, 0);
         header.addView(title);
         column.addView(header);

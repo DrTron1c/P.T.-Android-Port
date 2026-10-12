@@ -48,6 +48,7 @@ final class MenuBackdrop extends View {
     private long lastStep;
     private float shownLevel = -1f;
     private boolean running;
+    private boolean calm;
     private View follower;
     private MenuSound sound;
 
@@ -63,7 +64,7 @@ final class MenuBackdrop extends View {
                 invalidate();
                 if (follower != null) follower.setAlpha(0.8f + 0.2f * Math.max(0f, Math.min(1f, level)));
             }
-            postDelayed(this, planAt < planLength || level < 0.9f ? 16 : 55);
+            postDelayed(this, calm ? 100 : planAt < planLength || level < 0.9f ? 16 : 55);
         }
     };
 
@@ -84,6 +85,19 @@ final class MenuBackdrop extends View {
     /** The sound that is told the bulb's brightness (the buzz follows it). */
     void setSound(MenuSound value) {
         sound = value;
+    }
+
+    /**
+     * The calm picture of the screens that hold words to read (Settings, Load save, the log): the bulb burns steadily and a little dim, and
+     * nothing flickers.
+     */
+    void setCalm(boolean value) {
+        calm = value;
+        if (value) {
+            level = 0.55f;
+            goal = 0.55f;
+        }
+        shownLevel = -1f;
     }
 
     /** A view that follows the flicker a little (the logo glows with the bulb). */
@@ -177,6 +191,11 @@ final class MenuBackdrop extends View {
     private void step(long now) {
         long dt = Math.max(1, Math.min(100, now - lastStep));
         lastStep = now;
+        if (calm) {
+            goal = 0.55f;
+            level += (goal - level) * (1f - (float) Math.exp(-dt / 140.0));
+            return;
+        }
         if (planAt >= planLength) {
             if (now >= nextOut) {
                 planOut();

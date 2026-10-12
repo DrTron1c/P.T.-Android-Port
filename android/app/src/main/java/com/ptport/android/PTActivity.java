@@ -430,32 +430,28 @@ public class PTActivity extends SDLActivity {
 
         LinearLayout frame = new LinearLayout(this);
         frame.setOrientation(LinearLayout.VERTICAL);
-        frame.setBackgroundColor(0xF0101010);
+        frame.setBackgroundColor(0xF2060504);
         // the panel takes the touches over it, the game keeps the rest of the screen
         frame.setClickable(true);
         frame.setPadding(pad, pad, pad, 0);
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
-        TextView title = new TextView(this);
-        title.setText("Settings");
-        title.setTextSize(22);
-        title.setTextColor(Color.WHITE);
+        header.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        TextView title = MenuStyle.text(this, "SETTINGS", 20, MenuStyle.INK, true);
+        title.setLetterSpacing(0.25f);
+        title.setShadowLayer(MenuStyle.dp(this, 7), 0, 0, MenuStyle.GLOW);
         header.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        Button menu = new Button(this);
-        menu.setText("Main menu");
-        menu.setAllCaps(false);
-        menu.setOnClickListener(new View.OnClickListener() {
+        Button menu = MenuStyle.button(this, "Main menu", new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 leaveGame();
             }
         });
-        header.addView(menu, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        Button close = new Button(this);
-        close.setText("Close");
-        close.setAllCaps(false);
-        close.setOnClickListener(new View.OnClickListener() {
+        LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        buttonParams.rightMargin = MenuStyle.dp(this, 8);
+        header.addView(menu, buttonParams);
+        Button close = MenuStyle.button(this, "Close", new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 closeSettings();
@@ -463,8 +459,10 @@ public class PTActivity extends SDLActivity {
         });
         header.addView(close, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         frame.addView(header);
+        frame.addView(MenuStyle.rule(this), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, MenuStyle.dp(this, 1))));
 
         ScrollView scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
         scroll.addView(new SettingsPanel(this).createContent());
         frame.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 

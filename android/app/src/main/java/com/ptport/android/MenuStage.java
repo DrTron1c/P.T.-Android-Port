@@ -24,8 +24,8 @@ final class MenuStage extends ViewGroup {
     private static final float ROW_WIDTH = 480f;
     private static final float ROW_PITCH = 68f;
     private static final float NOTE_BASELINE = 593f;
-    // the baselines of Start, New game, Load save and Settings
-    private static final float[] BASELINES = { 559.6f, 653.6f, 721.6f, 789.6f };
+    // the baselines of Start, New game, Load save, Settings and Check for updates (the title screen's rows are 68 pixels apart)
+    private static final float[] BASELINES = { 559.6f, 653.6f, 721.6f, 789.6f, 857.6f };
     // the smallest the entries get, so they can be read and touched
     private static final float MIN_ENTRY_DP = 14f;
 

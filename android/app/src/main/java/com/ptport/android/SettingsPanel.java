@@ -1,12 +1,11 @@
 package com.ptport.android;
 
 import android.content.Context;
-import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.os.Handler;
-import android.os.Looper;
+import android.graphics.drawable.StateListDrawable;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -18,14 +17,14 @@ import java.io.RandomAccessFile;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
- * The settings, each as a row of buttons: the speed (picture size, frame rate, v-sync), the lighting, the textures and the effects,
- * and four presets that set them all at once. It is shown over the game by the touch overlay's SET button (PTActivity) and inside
- * the tools screen (ToolsActivity).
+ * The settings, each as a row of choices in the look of the title screen (Share Tech letters, off-white words, a thin rule under each
+ * heading, a glowing outline on the chosen choice): the speed (picture size, frame rate, v-sync), the upscaler, the lighting, the textures
+ * and the effects, the menu's sound, and four presets that set most of them at once. It is shown over the game by the touch overlay's SET
+ * button (PTActivity) and by the main menu's Settings (SettingsActivity).
  *
  * A game setting is passed to the game as a "name=number" line in android-settings.txt of its data folder; the game takes the file
  * about twice a second while it runs, applies each line as a tap on the same row of its own settings page would, and writes pt.ini.
@@ -33,14 +32,11 @@ import java.util.regex.Pattern;
  * automatic picture size and the menu sound are the app's own (PTActivity, AppPrefs).
  */
 final class SettingsPanel {
-    private static final int ACCENT = MenuStyle.AMBER_DARK;
-    private static final int BUTTON = 0xFF24211C;
     private static final String PICTURE = "picture";
     private static final String FPS = "fps_limit";
     private static final String COUNTER = AppPrefs.FPS_COUNTER;
     private static final String AUTO = AppPrefs.AUTO_SIZE;
     private static final String MENU_SOUND = AppPrefs.MENU_SOUND;
-    private static final Pattern STATUS = Pattern.compile("(\\d+) fps, gpu ([0-9.]+) ms.*?, (\\d+x\\d+),");
 
     private static final class Setting {
         final String key;
@@ -95,20 +91,15 @@ final class SettingsPanel {
     };
 
     private final Context context;
-    private final Handler ui = new Handler(Looper.getMainLooper());
+    private final Typeface font;
+    private final Typeface mono;
     private final List<Setting> settings = new ArrayList<Setting>();
     private final Map<String, Integer> values = new LinkedHashMap<String, Integer>();
-    private TextView statusView;
-    private final Runnable refresh = new Runnable() {
-        @Override
-        public void run() {
-            if (statusView != null) statusView.setText(lastStatus());
-            ui.postDelayed(this, 4000);
-        }
-    };
 
     SettingsPanel(Context context) {
         this.context = context;
+        this.font = MenuStyle.font(context);
+        this.mono = MenuStyle.mono(context);
         settings.add(new Setting(PICTURE, "Picture size",
                 "How many lines the game draws; Android scales it to the screen. Fewer lines run faster and look softer.",
                 new String[] { "Screen", "1440", "1080", "900", "720", "540", "480" }, new int[] { 0, 1440, 1080, 900, 720, 540, 480 }));
@@ -117,23 +108,14 @@ final class SettingsPanel {
                         + "the size chosen above. Each change pauses the picture for a moment.", OFF_ON, ZERO_ONE));
         settings.add(new Setting("upscaler", "Upscaler",
                 "Draws the game at a smaller size and rebuilds a sharp picture from several frames, so it can run faster at the same Picture size. "
-                        + "Built-in runs on any GPU (FSR 3, DLSS and XeSS are Windows only). Experimental.",
+                        + "Experimental.",
                 new String[] { "Off", "Built-in" }, new int[] { 0, 1 }));
         settings.add(new Setting("upscale_quality", "Upscaler quality",
-                "How small the game draws before the upscaler rebuilds the picture: Quality is 67% of each side, Performance 50%. Smaller is faster and softer.",
-                new String[] { "Native (anti-aliasing only)", "Quality", "Balanced", "Performance", "Ultra performance" }, new int[] { 0, 1, 2, 3, 4 }));
+                "How small the game draws before the upscaler rebuilds the picture: Quality is 67% of each side, Performance 50%. Smaller is faster and softer. "
+                        + "Native keeps the full size and only smooths the edges.",
+                new String[] { "Native", "Quality", "Balanced", "Performance", "Ultra" }, new int[] { 0, 1, 2, 3, 4 }));
         settings.add(new Setting("upscale_sharpness", "Upscaler sharpness", "Sharpens the upscaled picture. Off leaves it as the upscaler made it.",
                 new String[] { "Off", "20%", "40%", "60%", "80%", "100%" }, new int[] { 0, 2, 4, 6, 8, 10 }));
-        settings.add(new Setting("upscale_method", "Upscaler method",
-                "How the Built-in upscaler makes its picture. Draw is the default; Compute is the first version, which on some GPUs leaves most of the picture black.",
-                new String[] { "Compute", "Draw" }, new int[] { 0, 1 }));
-        settings.add(new Setting("upscale_debug", "Upscaler test view",
-                "Only for finding a fault: shows one stage of the Built-in upscaler instead of the game. Gradient is a pattern that does not depend on the game; leave it Off to play.",
-                new String[] { "Off", "Gradient", "Game", "Motion", "Depth", "History", "Reactive", "Clear", "Engine" },
-                new int[] { 0, 1, 2, 3, 4, 5, 6, 7, 8 }));
-        settings.add(new Setting("upscale_path", "Upscaler output",
-                "Only for finding a fault: where the Built-in upscaler writes its picture. Direct is normal; Copy writes to an image of its own and copies it over; Buffer writes to a buffer and copies that over.",
-                new String[] { "Direct", "Copy", "Buffer" }, new int[] { 0, 1, 2 }));
         settings.add(new Setting(FPS, "Frame rate",
                 "The most frames a second the game draws. A steady lower rate looks smoother than a rate that rises and falls; the screen is asked to match it.",
                 new String[] { "No limit", "30", "40", "45", "60", "90", "120" }, new int[] { 0, 30, 40, 45, 60, 90, 120 }));
@@ -261,9 +243,6 @@ final class SettingsPanel {
         String q = quality == null ? "quality" : quality.trim().toLowerCase();
         values.put("upscale_quality", q.equals("native") ? 0 : q.equals("balanced") ? 2 : q.equals("performance") ? 3 : q.equals("ultra_performance") ? 4 : 1);
         values.put("upscale_sharpness", clamp(Math.round(decimal(ini, "upscaling.sharpness", 0.0f) * 10.0f), 0, 10));
-        values.put("upscale_method", 1);
-        values.put("upscale_debug", 0);
-        values.put("upscale_path", 0);
         values.put("vsync", flag(ini, "display.vsync", true));
         values.put("shadows", clamp(number(ini, "graphics.shadow_quality", fresh ? 1 : 3), 0, 3));
         values.put("ambient_occlusion", flag(ini, "graphics.ambient_occlusion", !fresh));
@@ -291,8 +270,11 @@ final class SettingsPanel {
         for (String line : content.split("\r?\n")) {
             int eq = line.indexOf('=');
             if (eq < 0) continue;
+            String name = line.substring(0, eq).trim();
+            // the upscaler's test settings of earlier builds are gone: a line left over from one is dropped
+            if (name.equals("upscale_method") || name.equals("upscale_debug") || name.equals("upscale_path")) continue;
             try {
-                changes.put(line.substring(0, eq).trim(), Integer.parseInt(line.substring(eq + 1).trim()));
+                changes.put(name, Integer.parseInt(line.substring(eq + 1).trim()));
             } catch (NumberFormatException ignored) {
                 // a line that is not a number is left out
             }
@@ -367,12 +349,13 @@ final class SettingsPanel {
         return (int) (value * context.getResources().getDisplayMetrics().density + 0.5f);
     }
 
-    private TextView label(String text, int size, int color, boolean bold) {
+    private TextView label(String text, int size, int color, Typeface face, float spacing) {
         TextView view = new TextView(context);
         view.setText(text);
         view.setTextSize(size);
         view.setTextColor(color);
-        if (bold) view.setTypeface(Typeface.DEFAULT_BOLD);
+        view.setTypeface(face);
+        view.setLetterSpacing(spacing);
         return view;
     }
 
@@ -380,8 +363,11 @@ final class SettingsPanel {
         Button button = new Button(context);
         button.setText(text);
         button.setAllCaps(false);
-        button.setTextSize(12);
+        button.setTypeface(font);
+        button.setLetterSpacing(0.06f);
+        button.setTextSize(12.5f);
         button.setSingleLine(true);
+        button.setStateListAnimator(null);
         button.setMinWidth(0);
         button.setMinimumWidth(0);
         button.setMinHeight(0);
@@ -390,18 +376,30 @@ final class SettingsPanel {
         return button;
     }
 
-    private void paint(Button button, boolean selected) {
+    private GradientDrawable shape(int fill, int stroke, int strokeDp) {
         GradientDrawable shape = new GradientDrawable();
-        shape.setCornerRadius(dp(8));
-        shape.setColor(selected ? ACCENT : BUTTON);
-        button.setBackground(shape);
-        button.setTextColor(selected ? Color.WHITE : Color.rgb(200, 200, 200));
+        shape.setColor(fill);
+        shape.setCornerRadius(dp(1));
+        shape.setStroke(Math.max(1, dp(strokeDp)), stroke);
+        return shape;
+    }
+
+    /** The chosen choice has a bright outline and glowing white letters; the others are dim; one touched (or reached with the pad) lights up. */
+    private void paint(Button button, boolean selected) {
+        StateListDrawable states = new StateListDrawable();
+        GradientDrawable touched = shape(0x55FFF4DC, 0xFFE9E5D8, 1);
+        states.addState(new int[] { android.R.attr.state_pressed }, touched);
+        states.addState(new int[] { android.R.attr.state_focused }, touched);
+        states.addState(new int[] {}, selected ? shape(0x38FFF4DC, 0xFFE9E5D8, 1) : shape(0x99060504, 0x50FFF4DC, 1));
+        button.setBackground(states);
+        button.setTextColor(selected ? 0xFFFFFFFF : MenuStyle.INK);
+        button.setShadowLayer(selected ? dp(6) : 0f, 0f, 0f, MenuStyle.GLOW);
     }
 
     private LinearLayout buttonRow(int height) {
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(0, dp(6), 0, 0);
+        row.setPadding(0, dp(8), 0, 0);
         row.setMinimumHeight(height);
         return row;
     }
@@ -412,18 +410,23 @@ final class SettingsPanel {
         return params;
     }
 
+    /** A heading in capitals with the thin rule under it. */
     private void heading(LinearLayout column, String title) {
-        TextView view = label(title, 17, Color.WHITE, true);
-        view.setPadding(0, dp(18), 0, 0);
+        TextView view = label(title.toUpperCase(Locale.US), 14, MenuStyle.AMBER, font, 0.3f);
+        view.setShadowLayer(dp(6), 0f, 0f, MenuStyle.GLOW);
+        view.setPadding(0, dp(26), 0, dp(6));
         column.addView(view);
+        column.addView(MenuStyle.rule(context), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1))));
     }
 
     private void settingRow(LinearLayout column, final Setting setting) {
         LinearLayout box = new LinearLayout(context);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(0, dp(10), 0, 0);
-        box.addView(label(setting.title, 15, Color.WHITE, true));
-        box.addView(label(setting.note, 12, Color.rgb(170, 170, 170), false));
+        box.setPadding(0, dp(14), 0, 0);
+        box.addView(label(setting.title, 16, MenuStyle.INK, font, 0.08f));
+        TextView note = label(setting.note, 11, MenuStyle.DIM, mono, 0.03f);
+        note.setPadding(0, dp(2), 0, 0);
+        box.addView(note);
         LinearLayout row = buttonRow(dp(42));
         for (int i = 0; i < setting.labels.length; ++i) {
             final int value = setting.values[i];
@@ -462,13 +465,10 @@ final class SettingsPanel {
         LinearLayout column = new LinearLayout(context);
         column.setOrientation(LinearLayout.VERTICAL);
 
-        statusView = label(lastStatus(), 11, Color.rgb(160, 210, 160), false);
-        statusView.setTypeface(Typeface.MONOSPACE);
-        column.addView(statusView);
-
         heading(column, "Presets");
-        column.addView(label("Each sets the picture size, frame rate and every option below at once; change single ones after.", 12,
-                Color.rgb(170, 170, 170), false));
+        TextView about = label("Each sets the picture size, frame rate and the options below at once; change single ones after.", 11, MenuStyle.DIM, mono, 0.03f);
+        about.setPadding(0, dp(10), 0, 0);
+        column.addView(about);
         LinearLayout presets = buttonRow(dp(42));
         for (final Preset preset : PRESETS) {
             Button button = choiceButton(preset.name);
@@ -483,7 +483,8 @@ final class SettingsPanel {
         }
         column.addView(presets);
         for (Preset preset : PRESETS) {
-            TextView note = label(preset.name + ": " + preset.note, 11, Color.rgb(140, 140, 140), false);
+            TextView note = label(preset.name + ": " + preset.note, 11, MenuStyle.FAINT, mono, 0.03f);
+            note.setPadding(0, dp(3), 0, 0);
             column.addView(note);
         }
 
@@ -497,9 +498,6 @@ final class SettingsPanel {
         settingRow(column, find("upscaler"));
         settingRow(column, find("upscale_quality"));
         settingRow(column, find("upscale_sharpness"));
-        settingRow(column, find("upscale_method"));
-        settingRow(column, find("upscale_debug"));
-        settingRow(column, find("upscale_path"));
         heading(column, "Lighting");
         settingRow(column, find("shadows"));
         settingRow(column, find("ambient_occlusion"));
@@ -515,45 +513,14 @@ final class SettingsPanel {
         settingRow(column, find("lens_ghosts"));
         settingRow(column, find("film_grain"));
         settingRow(column, find("clarity"));
+        heading(column, "Main menu");
+        settingRow(column, find(MENU_SOUND));
         TextView end = label("Changes act at once in a running game and are kept. The picture size also changes at once; if the picture "
-                + "ever looks wrong after changing it, close the game and start it again.", 11, Color.rgb(140, 140, 140), false);
-        end.setPadding(0, dp(16), 0, dp(24));
+                + "ever looks wrong after changing it, close the game and start it again.", 11, MenuStyle.FAINT, mono, 0.03f);
+        end.setPadding(0, dp(22), 0, dp(28));
         column.addView(end);
 
         showValues();
-        column.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
-            @Override
-            public void onViewAttachedToWindow(View view) {
-                ui.removeCallbacks(refresh);
-                ui.post(refresh);
-            }
-
-            @Override
-            public void onViewDetachedFromWindow(View view) {
-                ui.removeCallbacks(refresh);
-            }
-        });
         return column;
-    }
-
-    /** What the game measured in its last 10 seconds, and which part of the frame took the time. */
-    private String lastStatus() {
-        File log = new File(dataDir(), "pt.log");
-        if (!log.isFile()) return "The game has not been played yet: no frame rate to show.";
-        String content = text(log, 65536);
-        int at = content.lastIndexOf(" status: ");
-        if (at < 0) return "Play for 10 seconds and the frame rate shows here.";
-        int end = content.indexOf('\n', at);
-        String line = content.substring(at + 9, end < 0 ? content.length() : end);
-        Matcher match = STATUS.matcher(line);
-        StringBuilder out = new StringBuilder("Last measured: ");
-        if (match.find()) {
-            out.append(match.group(1)).append(" fps, GPU ").append(match.group(2)).append(" ms a frame, drawing ").append(match.group(3));
-        } else {
-            out.append(line);
-        }
-        int parts = line.indexOf("gpu ms: ");
-        if (parts >= 0) out.append("\nGPU ms by part: ").append(line.substring(parts + 8));
-        return out.toString();
     }
 }

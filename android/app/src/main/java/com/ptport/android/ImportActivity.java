@@ -17,7 +17,6 @@ import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
-import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
@@ -51,9 +50,7 @@ import java.util.Map;
  * The files can come three ways: the dump folder, the two files themselves, or a fake PKG (fPKG) of the game, from which
  * PkgExtractor takes the archives (it refuses a store PKG).
  *
- * Every start first asks GitHub whether a newer build exists (Updater). If one does, a banner at the top says so, shows the
- * download's progress, and Android's installer takes over; if not (or if GitHub cannot be reached within a few seconds),
- * the start goes on as above.
+ * The update check is not here any more: it is part of the main menu (MenuActivity, UpdateBanner).
  */
 public class ImportActivity extends Activity {
     /** How the menu opens this screen: to choose the game files again (MODE_IMPORT), or to show the report of a game that closed (MODE_CRASH). */
@@ -64,11 +61,6 @@ public class ImportActivity extends Activity {
     private static final int REQUEST_TREE = 1;
     private static final int REQUEST_FILES = 2;
     private static final int REQUEST_PKG = 3;
-
-    // how long a start waits for the update check before it goes on without the answer
-    private static final long CHECK_DEADLINE_MS = 6000;
-    // how long an update problem stays readable before the start goes on
-    private static final long FAILURE_SHOWN_MS = 3000;
 
     private static final String[] REQUIRED = { "chunk1.psarc", "texture.qar" };
     // only the optional enhanced textures need it, and they are not in the Android build yet; copied when it is found
@@ -90,28 +82,8 @@ public class ImportActivity extends Activity {
     private LinearLayout banner;
     private TextView bannerText;
     private ProgressBar bannerBar;
-    private Updater updater;
-    private boolean checkDone;
     private boolean proceeded;
     private boolean importOnly;
-    // an update found while this app may not install packages yet: the player is in Settings turning that on
-    private Updater.Release waitingForPermission;
-
-    private final Runnable checkDeadline = new Runnable() {
-        @Override
-        public void run() {
-            if (checkDone) return;
-            checkDone = true;
-            proceed();
-        }
-    };
-
-    private final Runnable proceedNow = new Runnable() {
-        @Override
-        public void run() {
-            proceed();
-        }
-    };
 
     /** pt-runtime/game/CUSA01127 in the app's files: native code looks for the same place (android_platform.cpp). */
     static File gameDir(Context context) {
@@ -131,48 +103,16 @@ public class ImportActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         buildUi();
-        // the page below the banner waits for the update check, so a start that finds an update never flashes the menu
+        // the page waits until it is known which one is wanted: the menu, the game files or the report of a crash
         content.setVisibility(View.GONE);
-        updater = new Updater(this, updateListener);
-        String mode = getIntent().getStringExtra(EXTRA_MODE);
-        if (MODE_IMPORT.equals(mode) || MODE_CRASH.equals(mode)) {
-            // from the menu: no update check, straight to the page that was asked for
-            checkDone = true;
-            importOnly = MODE_IMPORT.equals(mode);
-            proceed();
-            return;
-        }
-        showBanner("Checking for updates...", -1, false);
-        updater.start();
-        ui.postDelayed(checkDeadline, CHECK_DEADLINE_MS);
+        importOnly = MODE_IMPORT.equals(getIntent().getStringExtra(EXTRA_MODE));
+        proceed();
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        if (waitingForPermission != null) {
-            // back from the Settings page for "install unknown apps"
-            Updater.Release release = waitingForPermission;
-            waitingForPermission = null;
-            if (updater.canInstall()) updater.install(release);
-            else proceed();
-        }
-    }
-
-    @Override
-    protected void onDestroy() {
-        ui.removeCallbacks(checkDeadline);
-        ui.removeCallbacks(proceedNow);
-        if (updater != null) updater.close();
-        super.onDestroy();
-    }
-
-    /** The start goes on without (or after) an update: the menu when the game files are here, else the page that asks for them. */
+    /** On to the menu when the game files are here, else the page that asks for them (or the one the menu asked for). */
     private void proceed() {
         if (proceeded) return;
         proceeded = true;
-        ui.removeCallbacks(checkDeadline);
-        ui.removeCallbacks(proceedNow);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         banner.setVisibility(View.GONE);
         if (!hasGame(this) || importOnly) {
@@ -307,7 +247,7 @@ public class ImportActivity extends Activity {
         finish();
     }
 
-    /** percent below 0 is an unmeasured wait (a moving bar); a failure is shown in red. */
+    /** percent below 0 is an unmeasured wait (a moving bar). */
     private void showBanner(String message, int percent, boolean failure) {
         banner.setBackgroundColor(failure ? Color.rgb(122, 31, 31) : Color.rgb(31, 58, 95));
         bannerText.setText(message);
@@ -315,56 +255,6 @@ public class ImportActivity extends Activity {
         if (percent >= 0) bannerBar.setProgress(percent);
         banner.setVisibility(View.VISIBLE);
     }
-
-    private final Updater.Listener updateListener = new Updater.Listener() {
-        @Override
-        public void onChecked(Updater.Release newer) {
-            if (checkDone) return;   // the deadline already let the start go on
-            checkDone = true;
-            ui.removeCallbacks(checkDeadline);
-            if (newer == null) {
-                proceed();
-                return;
-            }
-            if (!updater.canInstall()) {
-                // Android keeps "install unknown apps" off for an app until the player turns it on, once
-                waitingForPermission = newer;
-                showBanner("Update available (build " + newer.build + "). Allow this app to install updates, then come back.", -1, false);
-                try {
-                    startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName())));
-                } catch (ActivityNotFoundException e) {
-                    waitingForPermission = null;
-                    onFailed("this device has no page to allow installs from this app");
-                }
-                return;
-            }
-            updater.install(newer);
-        }
-
-        @Override
-        public void onDownloadStarting(Updater.Release release) {
-            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            showBanner("Starting download... (build " + release.build + ")", -1, false);
-        }
-
-        @Override
-        public void onDownloadProgress(int percent) {
-            showBanner("Downloading update: " + percent + "%", percent, false);
-        }
-
-        @Override
-        public void onInstalling() {
-            showBanner("Download complete. Confirm the install when Android asks; the app closes while it updates, then open it again.", 100, false);
-        }
-
-        @Override
-        public void onFailed(String message) {
-            if (proceeded) return;
-            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            showBanner("Update " + ("cancelled".equals(message) ? "cancelled." : "failed: " + message + "."), 0, true);
-            ui.postDelayed(proceedNow, FAILURE_SHOWN_MS);
-        }
-    };
 
     private View buildBanner(int pad) {
         banner = new LinearLayout(this);

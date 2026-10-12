@@ -2548,7 +2548,11 @@ public:
     bool KeepsCursor() const override { return keep_cursor_; }
     bool CompactRows() const override { return page_ == kLoopPage || (page_ == kStreetPage && game_.SpeedrunResultsPending()); }
     std::string_view Credit() const override {
+#ifdef __ANDROID__
+        if (page_ == kExtrasPage) return "Android port of the PC port by LoreanXavier";
+#else
         if (page_ == kExtrasPage) return "Port by LoreanXavier";
+#endif
         // the version, or the update notice: the same small muted line, on the main page only, never in the way of play
         if (page_ == kMainPage) {
             if (const auto newer = app_.updates.Newer()) {
@@ -2556,8 +2560,13 @@ public:
                 if (update_notice_.empty()) update_notice_ = UpdateNoticeKey(newer->version);
                 return update_notice_;
             }
+#ifdef __ANDROID__
+            // "P.T. Android Port <version>": plain text, which the page shows as it is (the app's menu has the same version)
+            if (version_text_.empty()) version_text_ = std::format("P.T. Android Port {}", pt::update::CurrentVersion());
+#else
             // "P.T. PC Port <version> by LoreanXavier", a text key with the version as its argument (OptionsMenu translates it)
             if (version_text_.empty()) version_text_ = std::format("pc_credit_version{}{}", pt::game::kPcNoteArgument, pt::update::CurrentVersion());
+#endif
             return version_text_;
         }
         return std::string_view();

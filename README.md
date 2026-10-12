@@ -4,7 +4,7 @@
 
 # P.T. Android Port
 
-[![Android build](https://github.com/DrTron1c/pt-pc/actions/workflows/android.yml/badge.svg?branch=android)](https://github.com/DrTron1c/pt-pc/actions/workflows/android.yml)
+[![Android build](https://github.com/DrTron1c/P.T.-Android-Port/actions/workflows/android.yml/badge.svg?branch=android)](https://github.com/DrTron1c/P.T.-Android-Port/actions/workflows/android.yml)
 
 A native Android app of **P.T.**, the 2014 PS4 teaser by Kojima Productions. It is built on the
 [P.T. PC port](https://github.com/LoreanXavier/pt-pc) by LoreanXavier: the game logic rebuilt in C++ from the original's behaviour,
@@ -14,8 +14,7 @@ and tablet GPUs, an in-app updater and a main menu made after the game's own tit
 Every level, model, texture, sound, script and cutscene is read at run time from **your own copy of the PS4 game**. The repository and
 the APK contain no game data.
 
-**Work in progress.** Every push is built by GitHub Actions and published as a prerelease. It has been tried on one device so far
-(see [Status](#status-and-known-issues)).
+**Version 1.00.** The first public release. It has been tried on one device so far (see [Status](#status-and-known-issues)).
 
 | Main menu | In game with touch controls |
 |---|---|
@@ -39,18 +38,20 @@ the APK contain no game data.
 
 ## Download and install
 
-1. Open the [Releases](https://github.com/DrTron1c/pt-pc/releases) page and download `P.T.PC.Port-Android-arm64.apk` from the newest **P.T. Android Port build N**
-   (builds are numbered by the CI run; the tag is `android-build-N`). Open the file and allow installs from the browser or file
-   manager you used. Play Protect may warn about an app it does not know: it is a sideloaded build.
+1. Open the [Releases](https://github.com/DrTron1c/P.T.-Android-Port/releases) page and download `P.T.PC.Port-Android-arm64.apk` from the newest **P.T. Android Port**
+   release (the tag is `v1.00` for version 1.00). Open the file and allow installs from the browser or file manager you used.
+   Play Protect may warn about an app it does not know: it is a sideloaded build.
 2. Start the app. The first start asks for the game: choose the dump folder (or the two files themselves), or **Or choose a fake PKG**.
    Keep the screen on until the copy is done. The main menu opens afterwards.
 3. Start. Settings, the save and the log are in the app's private storage; uninstalling the app deletes them and the copied game
    files.
 
-**Updates.** Each time the app starts it asks this repository's Releases for a newer build (it waits six seconds at most; offline it
-starts as usual), downloads it with a progress bar and hands it to Android's installer. The download's SHA-256 is checked against the
-digest GitHub lists for the file. The first time, Android asks you to let the app install updates. Imported game files and settings
-stay. Every build is signed with the same key, so a newer APK also installs over an older one by hand.
+**Updates.** Each time the app starts, the main menu asks this repository's Releases whether there is a newer version, and the **Check for
+updates** entry of the menu asks again whenever you touch it. A strip over the menu, in the style of the title screen, says that it
+is looking, that a version is available and how far the download is, or that you are up to date. The download is handed to Android's
+installer after its SHA-256 has been checked against the digest GitHub lists for the file. The first time, the strip asks you to
+**Allow** the app to install updates (an Android settings page opens) or to leave it for **Later**. Imported game files and settings stay. Every version is signed with the same key, so
+a newer APK also installs over an older one by hand. Only full releases count: drafts and pre-releases are skipped.
 
 The signing key (`android/pt-port.keystore`) is a throwaway key kept in the repository so that updates keep the game files; it makes
 the app updatable, it is not proof that an APK came from here. Take APKs from this repository's Releases only. Builds are marked
@@ -77,10 +78,11 @@ controller is in use and come back at the next touch. In menus a finger is the p
 ## Features
 
 **Main menu.** The title screen's hallway with its one flickering bulb, the brush logo and the entries in Share Tech: Start, New
-game, Load save, Settings, with "Continue: Floor … – N of 5 cleared" under Start. Low ominous music, the bulb's static buzz, wood
-creaks and now and then footsteps on a wooden floor play behind it (**Settings > Menu sound** turns it off).
+game, Load save, Settings and Check for updates, with "Continue: Floor … – N of 5 cleared" under Start and the version (for example
+"version 1.00") in the corner. Low ominous music, the bulb's static buzz, wood creaks and now and then footsteps on a wooden floor
+play behind it (**Settings > Menu sound** turns it off). The other screens (settings, saves, log) are in the same dark, off-white style.
 
-**Settings panel** (the SET button in game, Settings in the menu):
+**Settings panel** (the SET button in game, Settings in the menu), in the style of the title screen:
 - Presets **Fastest, Fast, Balanced, Original**, and every graphics option on its own; the first start applies the Low preset.
 - **Picture size**: the game draws into a fixed-size surface (1080 lines by default; Screen, 1440 down to 480 to choose) that Android scales to the
   screen, which is the biggest speed lever on a phone or tablet. An experimental **automatic picture size** lowers it while the
@@ -89,7 +91,7 @@ creaks and now and then footsteps on a wooden floor play behind it (**Settings >
 - **Frame counter**: Off, Frame rate, or Detailed (GPU and CPU time of a frame, picture size).
 - **Built-in temporal upscaler** (experimental, off by default): the desktop's FSR, DLSS and XeSS are Windows or vendor code, so
   Android has its own jittered temporal upscaler as shaders, which draws the scene at 2/3 or 1/2 of the picture size and rebuilds
-  the full size picture from earlier frames. Settings > Upscaler has Quality, Sharpness and a test view for diagnosing it.
+  the full size picture from earlier frames. Settings > Upscaler has Quality and Sharpness.
 
 **Saves.** *Load save* shows the current save (floor, cleared, Game+), Continue, Back up now, Save to a file, Choose a save file
 (also a PC save) and the list of backups with Put back and Delete. Anything that replaces a save keeps the old one first.
@@ -122,19 +124,19 @@ Everything else is the desktop game: the same loops, story, Museum and Game+. Th
   Snapdragon generations, Mali, Immortalis and Tensor GPUs are untried; the renderer's feature check names what a GPU lacks.
 - **Adreno 740 compute bug (fixed).** On that GPU compute shaders ran every work group but wrote only part of their output, which left
   the picture dark in the lit hallway (the exposure meter read garbage) and, with the first upscaler, most of the screen black. The
-  exposure meter, the flashlight reflection and the upscaler now run as full-screen draws (build 27 and later). On another GPU, if the
+  exposure meter, the flashlight reflection and the upscaler now run as full-screen draws. On another GPU, if the
   picture is still very dark, open **Log > Share** and look for the `exposure` lines: they are what is needed.
 - **Speed.** Mobile GPUs differ a lot; the Low preset and a 1080-line picture are the defaults. The built-in upscaler and the
   automatic picture size are experimental.
 - **Less tried:** the in-app updater (written from Android's documentation; the installer's confirmation page differs between
-  makers), the fPKG import (tested on synthetic packages and not on a real fPKG), the touch layout on other screen shapes, and a full
+  makers; version 1.00 is the first release it can find), the fPKG import (tested on synthetic packages and not on a real fPKG), the touch layout on other screen shapes, and a full
   playthrough on Android (none reported yet; the desktop port's scripted walkthrough does not run here).
 
 More detail, with the diagnosis notes, is in [docs/android.md](docs/android.md).
 
 ## Reporting a problem
 
-Open an issue with the **Android bug report** form. Please include the build number (bottom right of the main menu), the device and
+Open an issue with the **Android bug report** form. Please include the version (bottom right of the main menu), the device and
 Android version, what happened and how to make it happen again, and the report from **Log > Copy / Share** (after a crash the menu
 shows one). Problems with the Windows, Linux or macOS versions belong with the
 [desktop port](https://github.com/LoreanXavier/pt-pc).
@@ -142,8 +144,10 @@ shows one). Problems with the Windows, Linux or macOS versions belong with the
 ## Building
 
 CI does it for you: `.github/workflows/android.yml` builds the native code and the APK on GitHub's Linux runner for every push to
-the `android` branch, or on demand (**Actions > Android > Run workflow**), publishes the APK as a prerelease `android-build-N`
-(N is the run number and the app's versionCode; the newest three are kept) and pushes a short log of the run to the `ci-logs` branch.
+the `android` branch, or on demand (**Actions > Android > Run workflow**), keeps the APK as a workflow artifact and pushes a short
+log of the run to the `ci-logs` branch. Pushing a tag `v<version>` (for example `v1.00`) also publishes the APK as the release of
+that version. The version is written once, in `android/version.txt`; it is the app's version name, the number shown in the menu and
+in the game's options, and the tag has to match it. The versionCode is the CI run number.
 
 Locally: Android NDK r26 or newer, CMake 3.28, Ninja, Python 3, JDK 17 and Gradle 8.7 or newer.
 

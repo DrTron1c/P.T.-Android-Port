@@ -19,14 +19,15 @@ native() {
     -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
     -DANDROID_ABI=arm64-v8a \
     -DANDROID_PLATFORM=android-29 \
-    -DANDROID_STL=c++_static
+    -DANDROID_STL=c++_static \
+    -DPT_VERSION_OVERRIDE="$(tr -d '[:space:]' < android/version.txt)"
   # -k 0: every error of a build in one go (the CI log is read after the run, not during it)
   cmake --build "$BUILD" --target pt pt_shaders --parallel -- -k 0
   python3 tools/android/stage.py --build "$BUILD"
 }
 
 apk() {
-  # PT_VERSION_CODE: the CI's run number, the build number the app's update check compares (unset: 1, older than any CI build)
+  # PT_VERSION_CODE: the CI's run number, the APK's versionCode (unset: 1); the version people see is android/version.txt
   (cd android && gradle --no-daemon --console=plain assembleRelease -PptVersionCode="${PT_VERSION_CODE:-1}")
   mkdir -p dist
   cp android/app/build/outputs/apk/release/app-release.apk dist/P.T.PC.Port-Android-arm64.apk

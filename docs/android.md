@@ -19,37 +19,46 @@ updater and a main menu made for Android. Built by CI and tried by hand on one d
 
 ## Installing and the first start
 
-1. Install `P.T.PC.Port-Android-arm64.apk` (allow installs from the browser or file manager you opened it with). Every build is
-   signed with the same key (`android/pt-port.keystore`), so a newer APK installs over an older one and keeps the game files.
-   This first install is the only one done by hand: from a build with the updater in it (see "Updates"), the app updates itself.
+1. Install `P.T.PC.Port-Android-arm64.apk` from the newest release (allow installs from the browser or file manager you opened it
+   with). Every version is signed with the same key (`android/pt-port.keystore`), so a newer APK installs over an older one and keeps
+   the game files. This first install is the only one done by hand: from version 1.00 on the app updates itself (see "Updates"). The
+   test builds that came before it (`android-build-N`, removed from the Releases page when 1.00 came out) did not look for version
+   numbers and do not find 1.00: install it over them by hand once, and the game files stay.
 2. The first start shows a page that asks for the game. Choose the dump folder, or the two files themselves, or the fPKG file
    ("Or choose a fake PKG"; a folder that holds only one PKG works too). Keep the screen on until the copy is done; then the main
-   menu opens. Later starts go to the menu after the update check.
+   menu opens. Later starts go straight to the menu.
 3. Settings, the save and `pt.log` are in the app's private storage (`pt-runtime/data`). Uninstalling the app deletes them and the
    copied game files.
 
 ## Updates
 
-Every time the app starts it asks GitHub (the Releases of the repository it was built in) for a newer build. It waits at most six
-seconds for the answer; offline, it starts as usual.
+The update check is part of the main menu (`MenuActivity`, `Updater.java`, `UpdateBanner.java`). It runs once each time the app starts,
+without holding anything up (offline, nothing is said), and again whenever **Check for updates** (the fifth entry of the menu) is touched.
+A strip at the top right of the menu, in the style of the title screen (a band of dark fading into the hallway, a thin light rule above
+and below, Share Tech letters with a soft glow, and a thin line of light for the progress), tells what is going on:
 
-- A banner at the top says "Starting download...", then "Downloading update: N%" with a progress bar.
+- "Checking for updates" with a moving line of light. After a start the strip goes away if there is nothing new; after a touch on Check
+  for updates it says "You are up to date" (and the installed version), or "Could not check for updates" when GitHub did not answer.
+- "Version X is available": with the permission to install, the download starts at once ("Downloading update", the percentage and the
+  line of light filling). The first time, Android asks to allow this app to install updates ("Install unknown apps"): the strip says so
+  and has the words **Allow** (opens that Settings page; coming back continues the update) and **Later**.
 - The finished file goes to Android's installer, which asks you to confirm. When the install is done the app has been replaced and
-  closed; open it again. The imported game files and settings stay.
-- The first time, Android asks you to allow this app to install updates ("Install unknown apps"): a Settings page opens, switch it
-  on and go back. If you cancel an install, or a download fails, the banner says so and the game starts anyway; the next start asks again.
-- The build number is the CI run number: it is the APK's versionCode and the release tag `android-build-N`. A release counts as newer
-  when its N is above the installed versionCode. A local build has versionCode 1, so it is always offered the newest CI build.
+  closed; open it again. The imported game files and settings stay. A cancelled install or a failed download is told in the strip.
+- The version is one line, `android/version.txt` (1.00 for the first release). It is the app's versionName, the number in the menu's
+  corner and in the game's options page (the native build gets it as `PT_VERSION_OVERRIDE`), and the name of the release tag, `v1.00`.
+  The check takes the highest `v<numbers>` tag among the published releases that has the APK, and offers it when its numbers (compared
+  one by one, so 1.10 is above 1.9) are above the installed versionName. Drafts and pre-releases are never offered. The versionCode is the
+  CI run number: Android only needs it to go up.
 - The downloaded file's SHA-256 is checked against the digest GitHub lists for the release asset, and Android refuses an APK that is not
   signed with the same key as the installed app.
 
-The check reads only published releases, which is why the CI publishes a (pre)release rather than a draft; it keeps the newest three.
+The check reads only published releases, which is why the CI publishes a full release for a version tag rather than a draft.
 
 ## The main menu
 
-`MenuActivity` (after the launcher's update check and the crash report, when there is one): Start, New game, Load save, Settings, with the
-line "Continue: Floor ... - N of 5 cleared" under Start, and small links (game files, a new update check, the log) and the build number
-at the bottom right. The words "PC port" and "runs from your own copy of the game" are not on the menu (nor in the app's name: the
+`MenuActivity` (after the launcher's check for the game files and the crash report, when there is one): Start, New game, Load save,
+Settings and Check for updates, with the line "Continue: Floor ... - N of 5 cleared" under Start, and small links (game files, the log) and
+the version ("version 1.00") at the bottom right. The words "PC port" and "runs from your own copy of the game" are not on the menu (nor in the app's name: the
 launcher label is "P.T."). The look is the title screen's: the hallway with its one bulb, the brush logo, and the entries in Share Tech
 (the line under Start in Share Tech Mono; both SIL OFL 1.1, the licences are in `res/raw`). The chosen entry (Start at first, then the
 one touched or reached with the pad) is white, wider spaced and glowing, with a thin rule above and below it.
@@ -60,7 +69,8 @@ one touched or reached with the pad) is white, wider spaced and glowing, with a 
   holds near 1 with a faint tremble, stutters through two to six quick dips every second or few, and about every 15 to 30 seconds nearly
   goes out for a moment; the logo follows the bulb a little. `MenuStage` places everything by the picture's own pixel measures scaled to
   the screen's height, and makes the entries up to 30% bigger on a small screen (the letters are never under 14 dp). `MenuEntry` is one
-  line. The other screens (Settings, Load save, the log) keep the code-drawn `AtmosphereView` backdrop, which holds still.
+  line. The other screens (Settings, Load save, the log; `ThemedActivity`) have the same hallway behind them in `MenuBackdrop`'s calm
+  mode (the bulb burns steadily at about half its light, nothing flickers) under a dark veil, so the words can be read.
 - The pad moves between the entries (D-pad or stick; A presses, B goes back).
 - Sound (`MenuSound`, off with Settings > Menu sound; `AppPrefs` key `menu_sound`): a low drone loops (a low A, a pair a semitone apart, slow breath-like noise, a faint high tone and two far-off booms), the bulb buzzes (a faint hum while
   it is steady, loud and crackling while it stutters, nearly gone while it is out, with a pop as it dips and a snap as it comes back), wood
@@ -79,8 +89,12 @@ one touched or reached with the pad) is white, wider spaced and glowing, with a 
   a save file (a 128-byte `PT_Save_Data` slot file with the right magic and version, a PC save too), New game, and the list of backups with
   Put back and Delete. The game keeps two alternating slot files, `PT_Save_Data0` and `PT_Save_Data1`, in `data/`; the one with the
   higher sequence number is read. Everything that replaces a save keeps the old one first, in `data/saves/backup-*`.
-- **Settings** (`SettingsActivity`): the same panel as in the game (`SettingsPanel`). The old second icon, "P.T. tools", is gone; its
-  log is `ToolsActivity`, reached from the menu's Log link.
+- **Settings** (`SettingsActivity`): the same panel as in the game (`SettingsPanel`), made like the title screen: SETTINGS in spaced
+  Share Tech with a glow, every heading in capitals with a thin light rule under it, the explanations in Share Tech Mono, and the choices as
+  flat dark buttons whose chosen one has a bright outline and glowing white letters. It holds the presets, the speed (picture size,
+  automatic picture size, frame rate, frame counter, v-sync), the upscaler (Upscaler, quality, sharpness), lighting, textures,
+  effects, and the main menu's sound; there are no test or diagnostic rows in it. The old second icon, "P.T. tools", is gone; its log is
+  `ToolsActivity`, reached from the menu's Log link.
 - The app's own settings (picture size, the frame counter, the automatic size) are in `data/android-app.txt` (`AppPrefs`), a file and
   not SharedPreferences, because the menu and the game run in different processes.
 
@@ -116,7 +130,7 @@ How a platform piece differs from the Windows and Linux ones:
 |---|---|
 | executable folder | `pt-runtime` in the app's private storage (`platform/android_platform.cpp`); the APK's shaders and fonts are copied there at the start when the list in `pt_assets.txt` differs from the last copy |
 | game files | `pt-runtime/game/CUSA01127`, put there by `ImportActivity` (`android/app/src/main/java/com/ptport/android`); from a fake PKG by `PkgExtractor` |
-| updates | `Updater.java` and the banner in `ImportActivity`: GitHub Releases API, a download streamed into a `PackageInstaller` session |
+| updates | `Updater.java` and `UpdateBanner.java`, driven by `MenuActivity`: GitHub Releases API, a download streamed into a `PackageInstaller` session |
 | window | SDL's `SDLActivity` loads `libSDL3.so` and `libmain.so` (the `pt` target) and calls `SDL_main` |
 | Vulkan | the system's `libvulkan.so` through volk; the headers are fetched at volk's version (the NDK's are older) |
 | input | touch overlay in `platform/touch_controls.cpp`; SDL's mouse made of a touch is ignored in play and is the menus' pointer |
@@ -143,10 +157,15 @@ The Android NDK (r26 or newer), CMake 3.28, Ninja, Python 3, JDK 17 and Gradle 8
     tools/android/build.sh apk         # Gradle: dist/P.T.PC.Port-Android-arm64.apk
 
 `.github/workflows/android.yml` does both on GitHub's Linux runner for every push to the `android` branch (except one that only changes
-`*.md`, `docs/` or the issue form, which would only use up one of the three kept releases) or a manual run
-(Actions > Android > Run workflow). The APK is a workflow artifact and a published prerelease `android-build-N` (N is the run
-number, the app's versionCode; the newest three are kept), which is what the installed app's updater finds. Whatever the result, the last step pushes a short log (status, the tail of each build log, the error lines) to the
-`ci-logs` branch.
+`*.md`, `docs/` or the issue form) or a manual run (Actions > Android > Run workflow); the APK is then a workflow artifact. Whatever the
+result, the last step pushes a short log (status, the tail of each build log, the error lines) to the `ci-logs` branch.
+
+**Making a release.** The version is the one line of `android/version.txt`. To release it: change that line, add the notes in
+`android/release-notes/<version>.md`, push, wait for the branch's build to pass, and push the tag (`git tag v1.00 && git push origin v1.00`).
+The workflow builds the tag, checks that it matches `android/version.txt`, and publishes the APK `P.T.PC.Port-Android-arm64.apk` as a full
+release (not a pre-release, marked as the latest) titled "P.T. Android Port 1.00" with those notes. That release is what the installed
+apps find. The APK keeps its file name because the updater looks for it. Releases and tags named `android-build-N`, the test builds that
+came before 1.00, are deleted by the workflow when it publishes. The macOS workflow of the desktop port no longer starts on a release.
 
 ## Fake PKG import
 
@@ -183,22 +202,18 @@ The desktop settings are far too heavy for a tablet GPU at the tablet's own reso
 - The upscaler (Settings > Upscaler, Upscaler quality, Upscaler sharpness): FSR 3, FSR 4, DLSS and XeSS are Windows DLLs or need a
   vendor's GPU and MetalFX is Apple's, so the game's Upscaler list shows them greyed. The Android build has its own, **Built-in**
   (`builtin_backend.cpp`, `builtin_upscale.glsl` with `builtin_upscale.frag` and `builtin_upscale_sharpen.frag`, or `builtin_upscale.comp`;
-  docs/upscaling.md, Built-in temporal upscaler): a shader that needs no library and runs on any Vulkan GPU. Settings > Upscaler >
-  Upscaler method (`PT_BUILTIN_METHOD`) picks Draw (the default: two full screen draws into colour attachments) or Compute (the first
-  version: on the tablet's Adreno 740 every compute work group ran, but only the top 128 rows of the picture it wrote arrived, so most of
-  the screen was black; the engine's own luminance compute shader gave garbage on it too). It draws the scene at a fraction of the picture size (Quality is 2/3 of each side, Performance
-  1/2), jittered, and rebuilds the full size picture from the last frames. It is off by default and the presets do not touch it. The compute version failed on the
-  tablet (above); the Draw version, the default, has not been reported on yet. The game's own settings page
+  docs/upscaling.md, Built-in temporal upscaler): a shader that needs no library and runs on any Vulkan GPU. It draws the scene at a
+  fraction of the picture size (Quality is 2/3 of each side, Performance 1/2), jittered, and rebuilds the full size picture from the last
+  frames. It is off by default and the presets do not touch it. It runs as two full screen draws into colour attachments; a compute
+  version was the first one, and on the tablet's Adreno 740 every compute work group ran but only the top 128 rows of the picture it wrote
+  arrived, so most of the screen was black (the engine's own luminance compute shader gave garbage on it too). The game's own settings page
   (pause menu, PC settings) has the same Upscaler, Quality and Sharpness rows. If the picture goes wrong with it on, set Upscaler to Off.
-  Settings > Upscaler > Upscaler test view (not kept in `pt.ini`; `PT_BUILTIN_VIEW` does the same at start) replaces the upscaled picture
-  with one thing the shader reads: 1 Gradient (a pattern made from the pixel position alone), 2 Game picture (the render image as it
-  came out of the scene passes), 3 Motion, 4 Depth, 5 History, 6 Reactive, 7 Clear (the output cleared to orange by a transfer, no
-  shader) and 8 Engine (no upscaled picture, so the engine's own resolve pass shows the render image stretched). Settings > Upscaler >
-  Upscaler output (`PT_BUILTIN_PATH`) writes the shader's picture either Direct to the engine's image, to an image of its own that is
-  copied over (Copy) or to a buffer that is copied over (Buffer). The first dispatches of a run log how many work groups ran and how
-  many in each 64th of the rows (`upscale: built-in groups`), and the device's compute limits. Gradient is drawn in 64 row bands of six colours with a white frame at the display's edge. Gradient on the whole screen means the compute pass and
-  the output are fine and an input is wrong; a cropped gradient means the output or the passes after it are wrong. The dispatch's sizes,
-  jitter, exposure and the inputs' image layouts are in `pt.log` (`upscale: built-in dispatch`) for the first frames of a run.
+  The diagnostics of that search are not in the settings panel any more (they were test rows); they stay in the native code and are
+  read by the native code at start (a debugging build can set them): `PT_BUILTIN_METHOD` (draw or compute), `PT_BUILTIN_VIEW` (replaces the upscaled picture with
+  one thing the shader reads: 1 Gradient, 2 Game picture, 3 Motion, 4 Depth, 5 History, 6 Reactive, 7 Clear, 8 Engine) and
+  `PT_BUILTIN_PATH` (the shader's picture written Direct to the engine's image, to an image of its own that is copied over, or to a
+  buffer that is copied over). The first dispatches of a run log how many work groups ran, the device's compute limits and the dispatch's
+  sizes, jitter, exposure and the inputs' image layouts in `pt.log` (`upscale: built-in groups`, `upscale: built-in dispatch`).
 - The exposure meter and the flashlight reflection's colour are full screen draws on Android (`luminance.frag`, `reflect_colour.frag`,
   `SceneRenderer::MeterDraw`; `PT_METER_DRAW=0` goes back to `luminance.comp` and `reflect_colour.comp`). The compute versions gave an
   Adreno 740 half-written partial sums and garbage counters (billions of lit pixels "left out"), which held the exposure at EV 0 and
@@ -243,11 +258,12 @@ com.ptport.android cat files/pt-runtime/data/pt.log`; the APK is debuggable) and
 - Written without an NDK in reach: CI is the compiler of the Android code, and the touch code and the Android branches were
   syntax-checked on a desktop compiler. Java is reviewed by eye and compiled by CI.
 - **Adreno 740 compute shaders** gave half-written output (the dark picture, the black upscaler). The meter, the reflection colour and the
-  upscaler are full screen draws since build 27, and the picture is no longer dark on the device. If it is dark on another GPU, the
+  upscaler are full screen draws, and the picture is no longer dark on the device. If it is dark on another GPU, the
   `exposure` lines of the log are what to send.
 - Not reported on yet: the built-in upscaler (experimental, off by default), the automatic picture size and the frame counter.
 - The updater is written from the Android documentation and not tried on every phone: the confirmation page of the installer on other
   makers' systems, a silent update (Android 12 and newer allow it only for an app that installed itself), the "Install unknown apps" flow.
+  Version 1.00 is the first release it can find, so the first real update will be the first time it runs against a newer release.
 - The PKG import is tested on synthetic packages only, not on a real fPKG of P.T. or on a phone (speed, the storage provider's
   file descriptor).
 - No whole playthrough on Android has been reported yet; the desktop's scripted walkthrough (`tools/walkthrough.py`) does not run on a phone.
