@@ -46,7 +46,7 @@ The check reads only published releases, which is why the CI publishes a (pre)re
 
 ## The main menu
 
-`MenuActivity` (after the launcher's update check and the crash report, when there is one): Start, Load save, Settings, and small links
+`MenuActivity` (after the launcher's update check and the crash report, when there is one): Start, New game, Load save, Settings, and small links
 to the game files (choose them again), a new update check and the log. The look is code only (`AtmosphereView`, `MenuStyle`): a dark
 room with a lamp that flickers and now and then goes out, dust, a vignette and film grain; no image or font is used. The pad moves
 between the entries (D-pad or stick; A presses, B goes back).
@@ -57,6 +57,7 @@ between the entries (D-pad or stick; A presses, B goes back).
   other number is reported), and `PTActivity.onDestroy` ends the process as a fallback. The next Start gets a new process. The way back
   to the menu: Quit in the game's own menu, or "Main menu" at the top of the settings panel (the SET button; it asks first). `MenuActivity`
   waits (4 s at most) for the old process to be gone before it starts. A game that crashed shows its report when the menu comes back.
+- **New game** starts the story from the beginning: with a save, after a question, which is kept as a backup first.
 - **Load save** (`SavesActivity`, `SaveManager`): the current save (floor, cleared, Game+), Continue, Back up now, Save to a file, Choose
   a save file (a 128-byte `PT_Save_Data` slot file with the right magic and version, a PC save too), New game, and the list of backups with
   Put back and Delete. The game keeps two alternating slot files, `PT_Save_Data0` and `PT_Save_Data1`, in `data/`; the one with the

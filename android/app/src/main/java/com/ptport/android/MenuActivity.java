@@ -1,7 +1,9 @@
 package com.ptport.android;
 
 import android.app.ActivityManager;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.os.Bundle;
@@ -12,12 +14,13 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.Toast;
 import android.widget.TextView;
 
 import java.util.List;
 
 /**
- * The main menu: Start, Load save and Settings, over the dark backdrop. The launcher (ImportActivity) checks for an update and for
+ * The main menu: Start, New game, Load save and Settings, over the dark backdrop. The launcher (ImportActivity) checks for an update and for
  * the game files first and then opens this; the game runs in its own process and returns here when it ends.
  */
 public class MenuActivity extends ThemedActivity {
@@ -118,6 +121,17 @@ public class MenuActivity extends ThemedActivity {
         startNote.setPadding(MenuStyle.dp(this, 18), 0, 0, MenuStyle.dp(this, 14));
         column.addView(startNote);
 
+        MenuStyle.Entry fresh = new MenuStyle.Entry(this, "New game", 30);
+        fresh.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                newGame();
+            }
+        });
+        column.addView(fresh);
+        View freshGap = new View(this);
+        column.addView(freshGap, new LinearLayout.LayoutParams(1, MenuStyle.dp(this, 14)));
+
         MenuStyle.Entry load = new MenuStyle.Entry(this, "Load save", 30);
         load.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -208,6 +222,31 @@ public class MenuActivity extends ThemedActivity {
     }
 
     // ---- starting the game ----
+
+    /** The story from the beginning. With a save, after a question: the save is kept as a backup (Load save puts it back). */
+    private void newGame() {
+        if (starting) return;
+        if (SaveManager.current(this) == null && !SaveManager.hasAnyFile(this)) {
+            startGame();
+            return;
+        }
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("Start a new game?")
+                .setMessage("Your current save is kept as a backup, and Load save can put it back.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("New game", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        if (SaveManager.newGame(MenuActivity.this)) {
+                            showSaveNote();
+                            startGame();
+                        } else {
+                            Toast.makeText(MenuActivity.this, "Could not clear the save.", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                })
+                .show();
+    }
 
     private void startGame() {
         if (starting) return;
