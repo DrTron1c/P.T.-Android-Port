@@ -146,6 +146,11 @@ final class CrashReport {
             out.append("(problems: ").append(t).append(")\n");
         }
         try {
+            out.append(keyLines(context));
+        } catch (Throwable t) {
+            out.append("(key lines: ").append(t).append(")\n");
+        }
+        try {
             String tombstone = tombstone(info);
             if (!tombstone.isEmpty()) out.append("\n== native crash ==\n").append(tombstone);
         } catch (Throwable t) {
@@ -273,6 +278,11 @@ final class CrashReport {
             out.append("(problems: ").append(t).append(")\n");
         }
         try {
+            out.append(keyLines(context));
+        } catch (Throwable t) {
+            out.append("(key lines: ").append(t).append(")\n");
+        }
+        try {
             String log = gameLog(context);
             out.append("\n== pt.log (the game's own log) ==\n").append(log.isEmpty() ? "(none yet: the game has not been started)\n" : log);
         } catch (Throwable t) {
@@ -301,6 +311,41 @@ final class CrashReport {
         }
         File preset = new File(context.getFilesDir(), "pt-runtime/data/android-defaults-1");
         if (preset.isFile()) out.append("android preset applied: ").append(new String(readAll(preset, 64), UTF8).trim()).append('\n');
+        return out.toString();
+    }
+
+    /** The lines of pt.log that say what the renderer and the stage did: the picture's size, the exposure, how many lights and draws. */
+    private static String keyLines(Context context) throws IOException {
+        File file = new File(context.getFilesDir(), "pt-runtime/data/pt.log");
+        if (!file.isFile()) return "";
+        RandomAccessFile in = new RandomAccessFile(file, "r");
+        String text;
+        try {
+            long size = in.length();
+            long start = Math.max(0, size - 1048576);
+            byte[] bytes = new byte[(int) (size - start)];
+            in.seek(start);
+            in.readFully(bytes);
+            text = new String(bytes, UTF8);
+        } finally {
+            in.close();
+        }
+        String[] wanted = { "exposure settled", "vulkan: swapchain", "scene renderer", "shadow atlas", "preset", "stage", "upscale",
+                "renderer:", "lighting", "probes", "textures" };
+        ArrayDeque<String> lines = new ArrayDeque<String>();
+        for (String line : text.split("\r?\n")) {
+            if (line.contains(" status: ")) continue;
+            for (String key : wanted) {
+                if (line.contains(key)) {
+                    lines.add(cut(line, LINE_CHARS));
+                    if (lines.size() > 28) lines.removeFirst();
+                    break;
+                }
+            }
+        }
+        StringBuilder out = new StringBuilder("\n== renderer and stage lines in pt.log ==\n");
+        if (lines.isEmpty()) out.append("(none)\n");
+        for (String line : lines) out.append(line).append('\n');
         return out.toString();
     }
 
