@@ -29,6 +29,7 @@ import java.util.List;
 public class MenuActivity extends ThemedActivity {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private MenuEntry[] entries;
+    private MenuSound sound;
     private TextView startNote;
     private TextView loading;
     private boolean starting;
@@ -70,6 +71,12 @@ public class MenuActivity extends ThemedActivity {
         starting = false;
         loading.setVisibility(View.GONE);
         choose(entries[0]);
+        // the menu's own sound (Settings > Menu sound turns it off); it fades in
+        if (AppPrefs.getBool(this, AppPrefs.MENU_SOUND, true)) {
+            sound.start();
+        } else {
+            sound.stop();
+        }
         showSaveNote();
         // the game's ending is recorded by Android a moment after it happens
         ui.removeCallbacks(crashCheck);
@@ -79,6 +86,8 @@ public class MenuActivity extends ThemedActivity {
     @Override
     protected void onPause() {
         ui.removeCallbacks(crashCheck);
+        // out of sight is out of earshot: also while the game runs over the menu
+        if (sound != null) sound.stop();
         super.onPause();
     }
 
@@ -99,6 +108,9 @@ public class MenuActivity extends ThemedActivity {
 
     private void buildUi() {
         MenuBackdrop backdrop = new MenuBackdrop(this);
+        sound = new MenuSound(this);
+        // the buzz follows the bulb
+        backdrop.setSound(sound);
         ImageView logo = new ImageView(this);
         logo.setImageResource(R.drawable.menu_logo);
         logo.setScaleType(ImageView.ScaleType.FIT_XY);

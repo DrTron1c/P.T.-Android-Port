@@ -49,6 +49,7 @@ final class MenuBackdrop extends View {
     private float shownLevel = -1f;
     private boolean running;
     private View follower;
+    private MenuSound sound;
 
     private final Runnable tick = new Runnable() {
         @Override
@@ -56,6 +57,7 @@ final class MenuBackdrop extends View {
             if (!running) return;
             long now = SystemClock.uptimeMillis();
             step(now);
+            if (sound != null) sound.setLight(level);
             if (Math.abs(level - shownLevel) > 0.004f) {
                 shownLevel = level;
                 invalidate();
@@ -77,6 +79,11 @@ final class MenuBackdrop extends View {
         }
         picture = decoded;
         setWillNotDraw(false);
+    }
+
+    /** The sound that is told the bulb's brightness (the buzz follows it). */
+    void setSound(MenuSound value) {
+        sound = value;
     }
 
     /** A view that follows the flicker a little (the logo glows with the bulb). */

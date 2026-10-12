@@ -29,8 +29,8 @@ import java.util.regex.Pattern;
  *
  * A game setting is passed to the game as a "name=number" line in android-settings.txt of its data folder; the game takes the file
  * about twice a second while it runs, applies each line as a tap on the same row of its own settings page would, and writes pt.ini.
- * Without a running game the file waits for the next start. The picture size, the frame rate hint, the frame counter and the
- * automatic picture size are the app's own (PTActivity, AppPrefs).
+ * Without a running game the file waits for the next start. The picture size, the frame rate hint, the frame counter, the
+ * automatic picture size and the menu sound are the app's own (PTActivity, AppPrefs).
  */
 final class SettingsPanel {
     private static final int ACCENT = MenuStyle.AMBER_DARK;
@@ -39,6 +39,7 @@ final class SettingsPanel {
     private static final String FPS = "fps_limit";
     private static final String COUNTER = AppPrefs.FPS_COUNTER;
     private static final String AUTO = AppPrefs.AUTO_SIZE;
+    private static final String MENU_SOUND = AppPrefs.MENU_SOUND;
     private static final Pattern STATUS = Pattern.compile("(\\d+) fps, gpu ([0-9.]+) ms.*?, (\\d+x\\d+),");
 
     private static final class Setting {
@@ -139,6 +140,9 @@ final class SettingsPanel {
         settings.add(new Setting(COUNTER, "Frame counter",
                 "Shows the frame rate in the corner of the game. Detailed adds the GPU and CPU time of a frame and the picture size.",
                 new String[] { "Off", "Frame rate", "Detailed" }, new int[] { 0, 1, 2 }));
+        settings.add(new Setting(MENU_SOUND, "Menu sound",
+                "The buzz of the flickering light, the creaks, the footsteps and the low music in the main menu. Off keeps the menu silent.",
+                OFF_ON, ZERO_ONE));
         settings.add(new Setting("vsync", "V-sync", "Waits for the screen's refresh. Off can tear but lets the game run as fast as it can.", OFF_ON, ZERO_ONE));
         settings.add(new Setting("shadows", "Shadows", "The detail of the shadow maps. Off is the fastest.",
                 new String[] { "Off", "Low", "Medium", "High" }, new int[] { 0, 1, 2, 3 }));
@@ -249,6 +253,7 @@ final class SettingsPanel {
         values.put(PICTURE, PTActivity.renderHeight(context));
         values.put(AUTO, AppPrefs.getInt(context, AUTO, 0) != 0 ? 1 : 0);
         values.put(COUNTER, clamp(AppPrefs.getInt(context, COUNTER, 0), 0, 2));
+        values.put(MENU_SOUND, AppPrefs.getInt(context, MENU_SOUND, 1) != 0 ? 1 : 0);
         values.put(FPS, number(ini, "display.fps_limit", 0));
         String upscaler = ini.get("upscaling.upscaler");
         values.put("upscaler", upscaler != null && upscaler.trim().equalsIgnoreCase("builtin") ? 1 : 0);
@@ -328,6 +333,9 @@ final class SettingsPanel {
         } else if (setting.key.equals(AUTO) || setting.key.equals(COUNTER)) {
             AppPrefs.putInt(context, setting.key, value);
             PTActivity.applyOverlay(context);
+        } else if (setting.key.equals(MENU_SOUND)) {
+            // only the main menu reads it, when it comes back to the screen
+            AppPrefs.putInt(context, setting.key, value);
         } else {
             Map<String, Integer> change = new LinkedHashMap<String, Integer>();
             change.put(setting.key, value);

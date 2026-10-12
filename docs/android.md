@@ -61,6 +61,12 @@ one touched or reached with the pad) is white, wider spaced and glowing, with a 
   the screen's height, and makes the entries up to 30% bigger on a small screen (the letters are never under 14 dp). `MenuEntry` is one
   line. The other screens (Settings, Load save, the log) keep the code-drawn `AtmosphereView` backdrop, which holds still.
 - The pad moves between the entries (D-pad or stick; A presses, B goes back).
+- Sound (`MenuSound`, off with Settings > Menu sound; `AppPrefs` key `menu_sound`): a low drone loops (a low A, a pair a semitone apart, slow breath-like noise, a faint high tone and two far-off booms), the bulb buzzes (a faint hum while
+  it is steady, loud and crackling while it stutters, nearly gone while it is out, with a pop as it dips and a snap as it comes back), wood
+  creaks now and then (every 9 to 24 seconds), and every minute or so footsteps cross a wooden floor in another room. The
+  sounds are made by `tools/android/menu_sounds.py` from noise and sine waves (nothing is sampled from anyone's recording) and are the
+  `res/raw/menu_*.wav` files; one thread mixes them into one `AudioTrack` so the buzz follows the bulb (`MenuBackdrop.setLight`). The sound
+  fades in when the menu comes on screen and out when it goes away (the game starting, the screen going off).
 - **Start** starts the game, which loads its own save. The game runs in its own process (`android:process=":game"` on `PTActivity`):
   SDL cannot run the game's main function twice in one process, so the game's process ends with the game: when `main` returns the
   native code calls `_exit` with the game's result (`PtMain` in `main.cpp`; 0 is a normal end, which the crash report does not count, any
@@ -82,8 +88,15 @@ background, so a round mask still shows the whole logo), with a themed-icon laye
 
 ## Controls
 
-- Walk: put a thumb anywhere in the left part of the screen below the top strip; the stick appears under it.
+- Walk: put a thumb anywhere in the left part of the screen below the top strip; the stick appears under it (a faint one shows
+  where, until you touch).
 - Look: drag a finger anywhere else.
+- The controls are drawn from one picture, `assets/touch/hud.png` (copied to `pt-runtime/touch/` like the fonts): rings with grimy
+  edges and drips for the buttons, the stick's base and its thumb, cut from the HUD design the project was given (the alpha is made from the
+  design's brightness, with a dark fill inside each ring so the names read over the game). `touch_controls.cpp` has the table of pieces and
+  registers the picture with ImGui as a user texture; a button that is held glows and grows a little. Without the file plain circles and
+  words are drawn. Where the buttons sit follows the design: ACT in the lower right with ZOOM to its upper left and X above, II and SET
+  in the upper right, JACK in the upper left.
 - Buttons: ACT (the action, cross), ZOOM (hold; R3), X (the XMark's gouge), II (the menu), SET (the PC settings page) and JACK
   (the spoken word's stand-in, for the one part of the game that listens for it: tap it when the game listens).
 - The Android back button opens the menu. In menus a tap is a click.

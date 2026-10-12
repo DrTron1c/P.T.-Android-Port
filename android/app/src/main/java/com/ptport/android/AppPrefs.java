@@ -23,6 +23,8 @@ final class AppPrefs {
     static final String FPS_COUNTER = "fps_counter";
     /** 1 lets the game lower the picture size when it cannot keep its frame rate, and raise it again, up to the chosen size. */
     static final String AUTO_SIZE = "auto_size";
+    /** 0 keeps the main menu silent; 1 (the default) plays its buzz, creaks, footsteps and low music. */
+    static final String MENU_SOUND = "menu_sound";
 
     private static final Object LOCK = new Object();
 

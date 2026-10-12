@@ -7,6 +7,7 @@
 
 union SDL_Event;
 struct ImDrawList;
+struct ImTextureData;
 
 namespace pt {
 
@@ -25,6 +26,8 @@ struct TouchSample {
 // The on-screen controls: a walk stick that appears under the left thumb, the rest of the screen looks around, and buttons for the
 // action, zoom, X, the menu, the PC settings and the spoken word. Only on Android; elsewhere every call does nothing, and in the
 // menus the touch is the mouse pointer SDL makes of it, so the overlay lives in play only (the mouse captured, MouseUse::Look).
+// They are drawn from one picture (touch/hud.png beside the executable: rings with the button names, the stick's base and thumb);
+// without it plain circles and words are drawn instead.
 class TouchControls {
 public:
     static constexpr bool Supported() {
@@ -63,6 +66,9 @@ private:
     };
 
     float Unit() const;
+    void LoadSkin();
+    void DrawSkinned(ImDrawList* list);
+    void DrawPlain(ImDrawList* list);
     Circle ButtonCircle(int button) const;
     float StickRadius() const;
     Finger* Find(uint64_t id);
@@ -81,6 +87,8 @@ private:
     bool pending_touched_ = false;
     bool visible_ = false;
     bool hidden_ = false;
+    ImTextureData* skin_ = nullptr;  // the picture, owned by ImGui's texture list for the rest of the run
+    bool skin_tried_ = false;
 };
 
 }

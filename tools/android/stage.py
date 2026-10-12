@@ -4,7 +4,9 @@
 Puts into android/app/src/main:
   jniLibs/<abi>/libmain.so, libSDL3.so   the game and SDL, built by CMake
   java/org/libsdl/app/*.java             SDL's activity, taken from the SDL source CMake fetched (it must match libSDL3.so)
-  assets/shaders, assets/fonts           what the game reads at run time next to its executable on the desktop
+  assets/shaders, assets/fonts, assets/touch
+                                         what the game reads at run time next to its executable on the desktop (touch: the on-screen
+                                         controls' picture, assets/touch/hud.png)
   assets/pt_assets.txt                   "<size> <sha256> <path>" per asset; the game copies the assets out of the APK to
                                          its private storage when this list differs from the one it copied last
 """
@@ -63,6 +65,7 @@ def main() -> int:
     shutil.rmtree(assets, ignore_errors=True)
     (assets / "shaders").mkdir(parents=True)
     (assets / "fonts").mkdir(parents=True)
+    (assets / "touch").mkdir(parents=True)
     shaders = sorted((build / "shaders").glob("*.spv"))
     if not shaders:
         print("stage: no compiled shaders in the build (build the 'pt_shaders' target)", file=sys.stderr)
@@ -72,6 +75,10 @@ def main() -> int:
     for font in sorted((root / "assets" / "fonts").iterdir()):
         if font.is_file():
             shutil.copy2(font, assets / "fonts" / font.name)
+
+    for picture in sorted((root / "assets" / "touch").iterdir()):
+        if picture.is_file():
+            shutil.copy2(picture, assets / "touch" / picture.name)
 
     lines = []
     for path in sorted(p for p in assets.rglob("*") if p.is_file() and p.name != "pt_assets.txt"):
