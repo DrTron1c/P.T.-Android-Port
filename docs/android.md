@@ -160,6 +160,11 @@ The desktop settings are far too heavy for a tablet GPU at the tablet's own reso
   1/2), jittered, and rebuilds the full size picture from the last frames. It is off by default, the presets do not touch it, and it
   is untested on the tablet: the first builds that have it are the first run of its shader on an Adreno. The game's own settings page
   (pause menu, PC settings) has the same Upscaler, Quality and Sharpness rows. If the picture goes wrong with it on, set Upscaler to Off.
+  Settings > Upscaler > Upscaler test view (not kept in `pt.ini`; `PT_BUILTIN_VIEW` does the same at start) replaces the upscaled picture
+  with one thing the shader reads: 1 Gradient (a pattern made from the pixel position alone), 2 Game picture (the render image as it
+  came out of the scene passes), 3 Motion, 4 Depth, 5 History, 6 Reactive. Gradient on the whole screen means the compute pass and
+  the output are fine and an input is wrong; a cropped gradient means the output or the passes after it are wrong. The dispatch's sizes,
+  jitter, exposure and the inputs' image layouts are in `pt.log` (`upscale: built-in dispatch`) for the first frames of a run.
 - The frame counter (Settings > Frame counter: Off, Frame rate, Detailed): once a second the game sends the Android message `0x8002`
   (frames a second x10 in 12 bits, GPU ms x4 in 9, CPU ms x4 in 9, averaged over the second) and `PTActivity` shows it in the top left
   corner, green at the frame limit, yellow below 95 % of it and red below 80 %; Detailed adds the GPU and CPU time of a frame and the

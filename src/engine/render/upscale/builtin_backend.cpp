@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 
 #include "engine/core/log.h"
@@ -23,6 +25,18 @@ constexpr uint32_t kRing = 12;
 // display pixel about every ~2 frames, a native render one for every frame, so the full-size render takes a slightly faster one
 constexpr float kRestWeightUpscaling = 0.10f;
 constexpr float kRestWeightNative = 0.12f;
+
+std::atomic<int> g_view{-1};
+
+int TestView() {
+    int view = g_view.load();
+    if (view < 0) {
+        const char* env = std::getenv("PT_BUILTIN_VIEW");
+        view = env ? std::clamp(std::atoi(env), 0, 6) : 0;
+        g_view.store(view);
+    }
+    return view;
+}
 
 struct Push {
     uint32_t sizes[4];
@@ -73,6 +87,7 @@ public:
         }
         write_ = 0;
         next_set_ = 0;
+        frames_ = 0;
         last_exposure_ = 0.0f;
         LogInfo("upscale: built-in temporal upscaler {}x{} -> {}x{}", render_.width, render_.height, display_.width, display_.height);
         return true;
@@ -88,7 +103,8 @@ public:
             return false;
         }
         const uint32_t read = write_ ^ 1u;
-        const bool sharpen = d.sharpness > 0.001f;
+        const int view = TestView();
+        const bool sharpen = d.sharpness > 0.001f && view == 0;
         const bool upscaling = d.render.width < d.display.width || d.render.height < d.display.height;
 
         // last frame's history writes (and the output's reads of it) before this frame's reads and writes
@@ -111,8 +127,18 @@ public:
         push.b[0] = std::clamp(d.sharpness, 0.0f, 1.0f);
         push.b[1] = d.reset || last_exposure_ <= 0.0f ? 1.0f : 0.0f;
         push.b[2] = 0.0f;
-        push.b[3] = 0.0f;
+        push.b[3] = static_cast<float>(view);
 
+        // the first frames and then about every ten seconds: what this dispatch is given (a picture that goes wrong on a GPU
+        // nobody has tried is read from this and the status lines)
+        if (frames_ < 3 || frames_ % 600 == 0) {
+            LogInfo("upscale: built-in dispatch {}: render {}x{} display {}x{} output {}x{} jitter {:.3f} {:.3f} exposure {:.6f} reset {} view {} "
+                    "sharpness {:.2f} layouts color {} depth {} motion {} reactive {}",
+                    frames_, d.render.width, d.render.height, d.display.width, d.display.height, d.output.extent.width, d.output.extent.height,
+                    d.jitter.x, d.jitter.y, push.a[2], push.b[1] > 0.5 ? 1 : 0, view, d.sharpness, static_cast<int>(d.color.layout),
+                    static_cast<int>(d.depth.layout), static_cast<int>(d.motion.layout), static_cast<int>(d.reactive.layout));
+        }
+        ++frames_;
         vkCmdBindPipeline(d.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_);
         const uint32_t groups_x = (d.display.width + 7) / 8;
         const uint32_t groups_y = (d.display.height + 7) / 8;
@@ -325,8 +351,13 @@ private:
     VkExtent2D display_{};
     // the exposure of the frame in the history, 0 while there is none
     float last_exposure_ = 0.0f;
+    uint32_t frames_ = 0;
 };
 
+}
+
+void SetBuiltinUpscalerView(int view) {
+    g_view.store(std::clamp(view, 0, 6));
 }
 
 std::unique_ptr<UpscaleBackend> CreateBuiltinBackend(vk::Context& ctx) {

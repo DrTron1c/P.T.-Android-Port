@@ -31,7 +31,7 @@ layout(set = 0, binding = 6, rgba16f) uniform writeonly image2D u_output;
 layout(push_constant) uniform Push {
     uvec4 sizes;  // render width, height, display width, height
     vec4 a;       // jitter x, y (render pixels), exposure of this frame, the history's weight at rest
-    vec4 b;       // sharpness, reset (1: no history), mode, 0
+    vec4 b;       // sharpness, reset (1: no history), mode, test view (0: none)
 } pc;
 
 const float kMaxValue = 60000.0;
@@ -203,12 +203,49 @@ void Sharpen(ivec2 px) {
     imageStore(u_output, px, vec4(colour, centre.a));
 }
 
+// Test views for finding out why a picture goes wrong on a GPU nobody has tried (pc.b.w, the Android settings panel's Upscaler test
+// view): each writes one thing the upscaler reads, or a pattern that does not depend on any input, straight to the output
+void DebugView(ivec2 px) {
+    ivec2 render = ivec2(pc.sizes.xy);
+    vec2 display = vec2(pc.sizes.zw);
+    vec2 uv = (vec2(px) + 0.5) / display;
+    float exposure = max(pc.a.z, 1.0e-12);
+    ivec2 rp = clamp(ivec2(uv * vec2(render)), ivec2(0), render - 1);
+    int mode = int(pc.b.w + 0.5);
+    vec3 c = vec3(0.0);
+    if (mode == 1) {
+        // a pattern from the pixel position alone: red grows to the right, green downward, a checker of 64 pixel squares
+        c = vec3(uv.x, uv.y, 0.25) * 0.5;
+        if (((px.x >> 6) + (px.y >> 6) & 1) == 0) {
+            c *= 0.6;
+        }
+    } else if (mode == 2) {
+        c = Sane(texelFetch(u_color, rp, 0).rgb);
+    } else if (mode == 3) {
+        vec2 m = texelFetch(u_motion, rp, 0).xy;
+        if (!(Finite(m.x) && Finite(m.y))) {
+            m = vec2(0.0);
+        }
+        c = vec3(0.25 + 20.0 * m, 0.1);
+    } else if (mode == 4) {
+        float d = texelFetch(u_depth, rp, 0).x;
+        c = vec3(Finite(d) ? clamp(d * 12.0, 0.0, 1.0) : 1.0) * 0.5;
+    } else if (mode == 5) {
+        c = Sane(SampleHistory(uv).rgb * exposure);
+    } else if (mode == 6) {
+        c = vec3(texelFetch(u_reactive, rp, 0).x) * 0.5;
+    }
+    imageStore(u_output, px, vec4(c, 1.0));
+}
+
 void main() {
     ivec2 px = ivec2(gl_GlobalInvocationID.xy);
     if (px.x >= int(pc.sizes.z) || px.y >= int(pc.sizes.w)) {
         return;
     }
-    if (pc.b.z < 0.5) {
+    if (pc.b.w > 0.5) {
+        DebugView(px);
+    } else if (pc.b.z < 0.5) {
         Resolve(px);
     } else {
         Sharpen(px);

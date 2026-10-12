@@ -2755,6 +2755,11 @@ private:
             {"vsync", kVsync},                   {"upscaler", kUpscaler},          {"upscale_quality", kQuality},
             {"upscale_sharpness", kSharpness},
         };
+        if (name == "upscale_debug") {
+            // a test picture of the Built-in upscaler (not kept in pt.ini): 0 off, 1 gradient, 2 game picture, 3 motion, 4 depth, 5 history, 6 reactive
+            pt::SetBuiltinUpscalerView(std::clamp(value, 0, 6));
+            return true;
+        }
         if (name == "fps_limit") {
             // any number of frames a second (the page's own row has a list), 0 for no limit
             app_.settings.display.fps_limit = std::clamp(value, 0, 1000);

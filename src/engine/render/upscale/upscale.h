@@ -231,6 +231,10 @@ private:
 std::unique_ptr<UpscaleBackend> CreateFsrBackend(vk::Context& ctx, int generation);
 // the port's own temporal upscaler (builtin_backend.cpp, shaders/builtin_upscale.comp): no vendor library, any Vulkan GPU
 std::unique_ptr<UpscaleBackend> CreateBuiltinBackend(vk::Context& ctx);
+// A test view for the built-in upscaler (0 off; 1 a pattern, 2 the render image, 3 motion vectors, 4 depth, 5 the history, 6 the
+// reactive mask): it writes that to the output instead of the upscaled picture. The Android settings panel sets it (Upscaler test
+// view), PT_BUILTIN_VIEW does at start.
+void SetBuiltinUpscalerView(int view);
 std::unique_ptr<UpscaleBackend> CreateDlssBackend(vk::Context& ctx);
 // Apple MetalFX (metalfx_backend.mm, macOS only): the port's temporal upscaler on a Metal command buffer
 std::unique_ptr<UpscaleBackend> CreateMetalfxBackend(vk::Context& ctx);
