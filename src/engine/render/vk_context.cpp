@@ -695,6 +695,21 @@ bool Context::CreateSwapchain(uint32_t width, uint32_t height, bool vsync, bool 
     if (extent.width == 0 || extent.height == 0) {
         return false;
     }
+    VkSurfaceTransformFlagBitsKHR pre_transform = caps.currentTransform;
+#ifdef __ANDROID__
+    // The game does not pre-rotate its picture. A tablet whose panel is portrait reports a rotated current transform while the app
+    // is in landscape, and a swapchain made with that transform tells the system the image is already turned: the picture then
+    // comes out turned and stretched. IDENTITY, with the size the window has, leaves the rotation to the system.
+    if (pre_transform != VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR && (caps.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) &&
+        width > 0 && height > 0) {
+        pre_transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+        extent.width = std::clamp(width, caps.minImageExtent.width, caps.maxImageExtent.width);
+        extent.height = std::clamp(height, caps.minImageExtent.height, caps.maxImageExtent.height);
+    }
+#endif
+    LogInfo("vulkan: swapchain {}x{} (asked {}x{}, surface {}x{}, surface transform {:#x} of {:#x}, using {:#x})", extent.width, extent.height,
+            width, height, caps.currentExtent.width, caps.currentExtent.height, static_cast<unsigned>(caps.currentTransform),
+            static_cast<unsigned>(caps.supportedTransforms), static_cast<unsigned>(pre_transform));
     uint32_t image_count = caps.minImageCount + 1;
     if (caps.maxImageCount > 0) {
         image_count = std::min(image_count, caps.maxImageCount);
@@ -709,7 +724,7 @@ bool Context::CreateSwapchain(uint32_t width, uint32_t height, bool vsync, bool 
     info.imageArrayLayers = 1;
     info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    info.preTransform = caps.currentTransform;
+    info.preTransform = pre_transform;
     info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     info.presentMode = present_mode;
     info.clipped = VK_TRUE;

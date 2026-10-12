@@ -60,6 +60,23 @@ float HalfToFloat(uint16_t h) {
     return std::bit_cast<float>(bits);
 }
 
+
+// A suboptimal swapchain (VK_SUBOPTIMAL_KHR) still presents. On Android the system reports it for as long as the surface's
+// transform or size differs from the swapchain's, and rebuilding the swapchain every frame (a device idle wait, new images) was a
+// slideshow; the window's real size changes arrive as events (Renderer::Resize) and VK_ERROR_OUT_OF_DATE_KHR still rebuilds.
+bool SuboptimalMeansRebuild(const char* where) {
+#ifdef __ANDROID__
+    static int logged = 0;
+    if (logged < 3) {
+        ++logged;
+        LogWarn("vulkan: the swapchain is suboptimal at {} (kept; Android reports this while the surface's transform or size differs)", where);
+    }
+    return false;
+#else
+    (void)where;
+    return true;
+#endif
+}
 }
 
 bool Renderer::Init(SDL_Window* window, const RendererSettings& settings) {
@@ -494,7 +511,7 @@ bool Renderer::BeginFrame(bool present) {
             swapchain_dirty_ = true;
             return false;
         }
-        if (acquire == VK_SUBOPTIMAL_KHR) {
+        if (acquire == VK_SUBOPTIMAL_KHR && SuboptimalMeansRebuild("acquire")) {
             swapchain_dirty_ = true;
         }
     }
@@ -785,7 +802,7 @@ void Renderer::EndFrame(bool draw_ui) {
         const VkResult result = ctx_.QueuePresent(present);
         streamline::SetMarker(streamline::Marker::PresentEnd);
         ctx_.CheckDeviceLost(result, "present");
-        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || (result == VK_SUBOPTIMAL_KHR && SuboptimalMeansRebuild("present"))) {
             swapchain_dirty_ = true;
         }
     }
@@ -953,7 +970,7 @@ void Renderer::PresentGeneratedFrame(Frame& frame, const vk::Image* source, VkSe
     present.pImageIndices = &gen_index_;
     const VkResult result = ctx_.QueuePresent(present);
     ctx_.CheckDeviceLost(result, "generated frame present");
-    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || (result == VK_SUBOPTIMAL_KHR && SuboptimalMeansRebuild("generated frame present"))) {
         swapchain_dirty_ = true;
     }
 }

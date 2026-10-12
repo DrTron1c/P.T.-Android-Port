@@ -4287,6 +4287,8 @@ int RunGame(App& app, pt::Vfs& vfs) {
             SDL_GetMouseState(&x, &y);
             pending_input.pointer = glm::vec2(x, y) * SDL_GetWindowPixelDensity(app.window);
             pending_input.pointer_valid = true;
+            // Android: in the menus the pointer is where the finger touched
+            if (glm::vec2 touched; input.TouchPointer(touched)) pending_input.pointer = touched;
         }
         // Extras hotkeys: F6 the free camera, F7 the photo mode; in the photo mode P (Square) takes a photo and H (Triangle) hides
         // the panel; the menu button (Esc, Start) ends the photo mode, then the free camera, and opens no menu

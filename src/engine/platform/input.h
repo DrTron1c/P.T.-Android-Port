@@ -198,6 +198,12 @@ public:
 
     // The on-screen controls of the Android build (touch_controls.h); inert elsewhere
     TouchControls& Touch() { return touch_; }
+    // Android, in the menus: where a finger last touched, in window pixels (the menus' pointer; a touch is also a click). False
+    // until a finger has touched a menu, and again once a real mouse has moved.
+    bool TouchPointer(glm::vec2& out) const {
+        out = touch_pointer_;
+        return touch_pointer_valid_;
+    }
 
 private:
     struct Pad {
@@ -244,6 +250,8 @@ private:
     float mouse_travel_ = 0.0f;
     bool key_pressed_since_poll_ = false;
     MouseUse last_mouse_use_ = MouseUse::None;
+    glm::vec2 touch_pointer_{0.0f};
+    bool touch_pointer_valid_ = false;
     int mouse_settle_ = 0;
     uint32_t rumble_pad_ = 0;
     uint32_t rumble_logged_pad_ = 0;

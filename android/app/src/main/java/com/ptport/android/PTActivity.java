@@ -6,7 +6,9 @@ import android.graphics.Matrix;
 import android.util.DisplayMetrics;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.RelativeLayout;
 
 import org.libsdl.app.SDLActivity;
 import org.libsdl.app.SDLSurface;
@@ -76,7 +78,13 @@ public class PTActivity extends SDLActivity {
             super(context);
             fixedWidth = width;
             fixedHeight = height;
-            if (width > 0 && height > 0) getHolder().setFixedSize(width, height);
+            if (width > 0 && height > 0) {
+                getHolder().setFixedSize(width, height);
+                // SDL adds the surface to its layout without layout parameters, which makes it wrap its content, and a surface
+                // with a fixed size wraps to exactly that size: a 1620x1080 picture in a corner of the screen. Filling the
+                // layout is what makes Android scale the fixed-size buffer up to the screen.
+                setLayoutParams(new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            }
         }
 
         @Override

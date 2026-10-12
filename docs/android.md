@@ -100,6 +100,26 @@ with a `source.txt`.
 newer key derivation, a fragmented file, a file past the doubly indirect block limit, archives found by content in a subfolder,
 and the refusals (other passcode, not a PKG, truncated, another game).
 
+## Speed and picture size
+
+The desktop settings are far too heavy for a tablet GPU at the tablet's own resolution (3000 px wide and more). So:
+
+- `PTActivity` draws into a fixed-size surface (`SurfaceHolder.setFixedSize`, 1080 lines by default) and Android's compositor scales it
+  to the screen. The surface must be laid out `MATCH_PARENT`: SDL adds it without layout parameters, and a fixed-size surface that
+  wraps its content is exactly that size, in a corner of the screen. Touches are scaled to the buffer's size (`FixedSurface.onTouch`),
+  since SDL divides them by the surface size.
+- The first start of a build with `android-defaults-1` (a marker in `data/`) applies the Low graphics preset; the second icon,
+  "P.T. tools" (`ToolsActivity`), sets the picture size (SharedPreferences, read at the next start) and asks for Low / Medium /
+  Original (`data/android-quality.txt`, consumed by `ApplyDeviceDefaults` at the next start).
+- The pipeline cache is written every 30 s, when the app goes to the background, and at shutdown (an Android app is usually ended
+  without one, which left every start with a cold cache).
+- A suboptimal swapchain (`VK_SUBOPTIMAL_KHR`) does not rebuild the swapchain on Android. If the surface reports a rotated
+  transform the swapchain uses IDENTITY with the window's size and the system rotates. The swapchain's size and transforms are in
+  pt.log (`vulkan: swapchain ...`).
+- Menus: a finger is the pointer and a finger going down is a click (`InputDevice::TouchPointer`); the mouse SDL makes of a touch does
+  the same where it works.
+- The tools screen shows the log: device, settings, the `status:` lines (fps, GPU ms, render size, every 10 s), warnings and errors.
+
 ## When the game closes by itself
 
 Android keeps the reason every earlier run of an app ended (`ApplicationExitInfo`, Android 11 and newer). If the last run was

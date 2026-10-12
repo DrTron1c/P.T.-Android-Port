@@ -536,9 +536,28 @@ void InputDevice::ProcessEvent(const SDL_Event& event) {
             any_edge_ = true;
             last_from_gamepad_ = false;
             UsePrompts(PromptStyle{}, 0);
+        } else if (TouchControls::Supported() && last_mouse_use_ != MouseUse::Look && event.type != SDL_EVENT_FINGER_CANCELED) {
+            // in the menus a finger is the pointer, and a finger going down is a click. The mouse SDL makes of a touch does the
+            // same where it works; this does not depend on it (both set the same edge, so a tap is one click)
+            SDL_Window* window = SDL_GetWindowFromID(event.tfinger.windowID);
+            if (!window) window = SDL_GetMouseFocus();
+            int width = 0;
+            int height = 0;
+            if (window && SDL_GetWindowSizeInPixels(window, &width, &height) && width > 0 && height > 0) {
+                touch_pointer_ = glm::vec2(event.tfinger.x * static_cast<float>(width), event.tfinger.y * static_cast<float>(height));
+                touch_pointer_valid_ = true;
+                if (event.type == SDL_EVENT_FINGER_DOWN) {
+                    click_edge_ = true;
+                    any_edge_ = true;
+                    last_from_gamepad_ = false;
+                    UsePrompts(PromptStyle{}, 0);
+                }
+            }
         }
         break;
     case SDL_EVENT_MOUSE_MOTION:
+        // a real mouse (a Bluetooth one on a tablet) takes the pointer back from the last touch
+        if (TouchControls::Supported() && event.motion.which != SDL_TOUCH_MOUSEID) touch_pointer_valid_ = false;
         // in play on Android the look comes from the fingers; the mouse SDL makes of a touch is only the menus' pointer
         if (TouchControls::Supported() && event.motion.which == SDL_TOUCH_MOUSEID && last_mouse_use_ == MouseUse::Look) break;
         mouse_dx_ += event.motion.xrel;
