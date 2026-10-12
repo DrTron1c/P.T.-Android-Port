@@ -5306,14 +5306,14 @@ int RunGame(App& app, pt::Vfs& vfs) {
                 const VkExtent2D render_extent = app.renderer.RenderExtent();
                 const double frames_seen = static_cast<double>(std::max<uint64_t>(status_frames, 1));
                 pt::LogInfo("status: {:.0f} fps, gpu {:.2f} ms, vram {:.0f} of {:.0f} MB, {}x{}, upscaler {} {}, frame generation {}, vsync {}, "
-                            "fps limit {}, floor {}{}, ev {:.2f} exposure {:.5f} luminance {:.4f}, {} draws {} lights, "
+                            "fps limit {}, floor {}{}, ev {:.2f} exposure {:.5f} luminance {:.4f} ({:.2f}% over the ceiling), {} draws {} lights, "
                             "gpu ms: shadows {:.1f} mirror {:.1f} gbuffer {:.1f} lighting {:.1f} compose {:.1f} post {:.1f}, cpu {:.1f} ms",
                             status_frames / status_seconds, status_gpu / std::max<uint64_t>(status_frames, 1), used / 1048576.0,
                             budget / 1048576.0, render_extent.width, render_extent.height, app.settings.upscaling.upscaler,
                             app.settings.upscaling.quality, app.settings.upscaling.frame_generation,
                             app.settings.display.vsync ? "on" : "off", app.settings.display.fps_limit, game.Floor().CurrentFloorName(),
                             ui_ready && ui.MenuOpen() ? ", menu open" : "", app.scene.Stats().ev, app.scene.Stats().exposure,
-                            app.scene.Stats().luminance, app.scene.Stats().draws, app.scene.Stats().lights,
+                            app.scene.Stats().luminance, 100.0 * app.scene.Stats().bright, app.scene.Stats().draws, app.scene.Stats().lights,
                             status_pass[0] / frames_seen, status_pass[1] / frames_seen, status_pass[2] / frames_seen,
                             status_pass[3] / frames_seen, status_pass[4] / frames_seen, status_pass[5] / frames_seen,
                             status_cpu / frames_seen);

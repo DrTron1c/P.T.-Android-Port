@@ -3,6 +3,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
@@ -1222,21 +1223,48 @@ void SceneRenderer::ReadTimestamps(FrameSlot& slot) {
     stats_.gpu_ms = span(0, 6);
 }
 
-uint32_t SceneRenderer::SumLuminance(const FrameSlot& slot, double& sum, double& count) const {
+float SceneRenderer::LuminanceCeiling() {
+    static const float ceiling = [] {
+#ifdef __ANDROID__
+        float value = 2.0f;
+#else
+        float value = 0.0f;
+#endif
+        if (const char* text = std::getenv("PT_EV_CEILING")) {
+            value = std::max(0.0f, static_cast<float>(std::atof(text)));
+        }
+        return value;
+    }();
+    return ceiling;
+}
+
+uint32_t SceneRenderer::SumLuminance(const FrameSlot& slot, double& sum, double& count, double* bright) const {
     const glm::vec2* partial = static_cast<const glm::vec2*>(slot.luminance.mapped);
     sum = 0.0;
     count = 0.0;
+    if (bright) {
+        *bright = 0.0;
+    }
     uint32_t unusable = 0;
     for (uint32_t i = 0; i < slot.luminance_groups; ++i) {
         const float s = partial[i].x;
         const float c = partial[i].y;
-        // a workgroup covers 32 x 32 pixels; each comparison is false for a NaN
-        if (s >= 0.0f && s < 1.0e9f && c >= 0.0f && c <= 1024.0f) {
-            sum += s;
-            count += c;
-        } else {
-            ++unusable;
+        // A workgroup covers 32 x 32 pixels, 1024 at most; the shader adds 2048 to the count for each bright pixel, so the count is the
+        // low 11 bits and the bright ones the rest (exact in a float up to 2^24). Each comparison is false for a NaN.
+        if (s >= 0.0f && s < 1.0e9f && c >= 0.0f && c <= 2200000.0f) {
+            const uint32_t packed = static_cast<uint32_t>(c);
+            const uint32_t pixels = packed & 2047u;
+            const uint32_t over = packed >> 11;
+            if (pixels <= 1024u && over <= pixels) {
+                sum += s;
+                count += pixels;
+                if (bright) {
+                    *bright += over;
+                }
+                continue;
+            }
         }
+        ++unusable;
     }
     return unusable;
 }
@@ -1263,7 +1291,8 @@ void SceneRenderer::ReadMeasurements(FrameSlot& slot, float dt, const ExposureSe
     vmaInvalidateAllocation(renderer_->Context().allocator, slot.luminance.allocation, 0, VK_WHOLE_SIZE);
     double sum = 0.0;
     double count = 0.0;
-    const uint32_t unusable = SumLuminance(slot, sum, count);
+    double bright = 0.0;
+    const uint32_t unusable = SumLuminance(slot, sum, count, &bright);
     slot.measured = false;
     if (unusable > 0) {
         static uint32_t reported = 0;
@@ -1280,6 +1309,7 @@ void SceneRenderer::ReadMeasurements(FrameSlot& slot, float dt, const ExposureSe
         return;
     }
     stats_.luminance = measured;
+    stats_.bright = static_cast<float>(bright / count);
     if (!adaptation_valid_ || !toggles.adaptation || !lighting_ || !lighting_->valid) {
         return;
     }
@@ -1308,6 +1338,21 @@ void SceneRenderer::ReadMeasurements(FrameSlot& slot, float dt, const ExposureSe
     if (static const bool ev_trace = std::getenv("PT_EV_TRACE") != nullptr; ev_trace) {
         LogInfo("ev trace: measured {:.5f} raw {:.5f} target {:.3f} ev {:.3f} dt {:.4f}", measured, raw, target, ev_, dt);
     }
+#ifdef __ANDROID__
+    // Every two seconds one line for the log screen: what the meter read and what it did with it (the reading, the share of pixels over
+    // the ceiling, the exposure it was taken at, the EV it aims for), with the lights and the shadow views of the frame.
+    {
+        static auto last_meter = std::chrono::steady_clock::time_point{};
+        const auto now = std::chrono::steady_clock::now();
+        if (now - last_meter >= std::chrono::seconds(2)) {
+            last_meter = now;
+            LogInfo("exposure meter: reading {:.4f} ({:.2f}% of {:.0f} pixels over {:.1f}) taken at exposure {:.5f}, ev {:.2f} aims for {:.2f}, "
+                    "{} lights, {} shadow views",
+                    measured, 100.0 * bright / count, count, LuminanceCeiling() > 0.0f ? LuminanceCeiling() : 2.0f, slot.exposure_used, ev_, target,
+                    stats_.lights, stats_.shadow_views);
+        }
+    }
+#endif
 }
 
 namespace {

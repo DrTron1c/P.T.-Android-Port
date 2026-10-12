@@ -167,6 +167,7 @@ struct RenderStats {
     float ev = 0.0f;
     float exposure = 1.0f;
     float luminance = 0.0f;
+    float bright = 0.0f;  // the share of the lit pixels brighter than the exposure meter's ceiling
     float gpu_ms = 0.0f;
     float cpu_ms = 0.0f;
     float pass_ms[6] = {};
@@ -344,8 +345,12 @@ private:
     void ReadMeasurements(FrameSlot& slot, float dt, const ExposureSettings& settings);
     // The sum and the pixel count of the slot's luminance partials; returns how many partials were not usable (a NaN, an infinity, a
     // negative or an impossible count: what a buffer the GPU did not write holds). Those are left out of the sums.
-    uint32_t SumLuminance(const FrameSlot& slot, double& sum, double& count) const;
+    uint32_t SumLuminance(const FrameSlot& slot, double& sum, double& count, double* bright = nullptr) const;
     void SettleExposure(const ExposureSettings& settings);
+    // The most one pixel adds to the exposure meter's mean (the lit picture after the exposure), 0 for no limit. Android has one: the
+    // first Android log held the exposure at its darkest for minutes with a lit room, the mean set by a few pixels of the lamp's glass.
+    // PT_EV_CEILING=<value> overrides it (0 turns it off).
+    static float LuminanceCeiling();
     float ExposureFor(float ev, const ExposureSettings& settings) const;
 
     void BindSets(VkCommandBuffer cmd, VkPipelineBindPoint point);

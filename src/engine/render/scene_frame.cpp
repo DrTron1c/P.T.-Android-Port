@@ -1706,6 +1706,10 @@ void SceneRenderer::RecordLuminance(VkCommandBuffer cmd) {
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, luminance_);
     BindSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE);
     gpu::PassPush push;
+    // the most a pixel adds to the mean (SceneRenderer::LuminanceCeiling), and where a pixel counts as bright for the log
+    const float ceiling = LuminanceCeiling();
+    push.f0.x = ceiling;
+    push.f0.y = ceiling > 0.0f ? ceiling : 2.0f;
     PushConstants(cmd, &push, sizeof(push));
     vkCmdDispatch(cmd, gx, gy, 1);
     VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
@@ -2533,7 +2537,8 @@ void SceneRenderer::SettleExposure(const ExposureSettings& settings) {
     vmaInvalidateAllocation(renderer_->Context().allocator, slot.luminance.allocation, 0, VK_WHOLE_SIZE);
     double sum = 0.0;
     double count = 0.0;
-    const uint32_t unusable = SumLuminance(slot, sum, count);
+    double bright = 0.0;
+    const uint32_t unusable = SumLuminance(slot, sum, count, &bright);
     adaptation_valid_ = true;
     // a NaN in the EV would stay for good (each step starts from it) and make every lit surface black
     if (!std::isfinite(ev_)) {
@@ -2571,8 +2576,9 @@ void SceneRenderer::SettleExposure(const ExposureSettings& settings) {
     SetTppFog(lighting_->tpp);
     UploadFrame(slot);
     LogInfo("scene renderer: exposure settled at ev {:.2f} (luminance {:.4f}, exposure {:.5f}), {} lights, {} probes, {} shadow views, {} draws "
-            "(luminance over {} pixels, {} of {} partials unusable)",
-            ev_, raw, exposure_, light_count_, probe_count_, shadow_views_.size(), draws_.size(), count, unusable, slot.luminance_groups);
+            "(luminance over {} pixels, {:.2f}% of them over the meter's ceiling, {} of {} partials unusable)",
+            ev_, raw, exposure_, light_count_, probe_count_, shadow_views_.size(), draws_.size(), count, 100.0 * bright / count, unusable,
+            slot.luminance_groups);
 }
 
 void SceneRenderer::Render(const Camera& camera, const std::vector<DrawItem>& items) {

@@ -18,6 +18,10 @@ layout(std430, set = 1, binding = 5) buffer LuminanceOut {
 shared vec2 s_sum[256];
 
 void main() {
+    // pass.f0.x: a ceiling for one pixel's share of the mean (0 for none); pass.f0.y: pixels brighter than this are counted as bright
+    // (the count rides in the high part of the pixel count, for the log: 2048 for each bright pixel)
+    const float ceiling = pass.f0.x;
+    const float threshold = pass.f0.y;
     ivec2 size = ivec2(ImgSize(IMG_DIFFUSE));
     ivec2 base = ivec2(gl_GlobalInvocationID.xy) * 2;
     vec2 acc = vec2(0.0);
@@ -32,7 +36,10 @@ void main() {
                     // desktop's gives a finite value) would turn the whole sum, and with it the exposure, into a NaN, and every lit
                     // surface of the frame black. A comparison with a NaN is false, so this keeps the finite values only.
                     if (luma < 60000.0) {
-                        acc += vec2(max(0.0, luma), 1.0);
+                        // A few pixels far brighter than the picture (the lamp's glass beside its bulb) would otherwise set the mean, and
+                        // so the exposure, for the whole picture: the room goes black around a lamp that is lit.
+                        const float used = ceiling > 0.0 ? min(luma, ceiling) : luma;
+                        acc += vec2(max(0.0, used), luma > threshold ? 2049.0 : 1.0);
                     }
                 }
             }
